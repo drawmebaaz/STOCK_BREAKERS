@@ -1,0 +1,90 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+dist/
+build/
+out/
+target/
+
+# Coverage
+coverage/
+*.lcov
+
+# Cache
+.cache/
+.tmp/
+temp/
+*.cache
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# JavaScript / TypeScript
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Java / Kotlin
+*.class
+.gradle/
+bin/
+
+# Go
+bin/
+.coverprofile
+
+# Rust
+Cargo.lock
+
+# Ruby
+.bundle/
+vendor/bundle/
+
+# PHP / Composer
+composer.lock
+
+# .NET
+bin/
+obj/
+
+# C / C++
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.rar

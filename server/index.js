@@ -2,8 +2,11 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
-import dotenv from "dotenv";
 import mongoose from "mongoose";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import compression from "compression";
+import morgan from "morgan";
 
 import authRoutes from "./routes/auth.js";
 import stockRoutes from "./routes/stocks.js";
@@ -12,18 +15,55 @@ import portfolioRoutes from "./routes/portfolio.js";
 import transactionRoutes from "./routes/transactions.js";
 import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
+import { env } from "./config/env.js";
+import { notFound, errorHandler } from "./middleware/errors.js";
 import { initPriceEngine } from "./sockets/priceEngine.js";
-
-dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: process.env.CLIENT_URL || "http://localhost:5173", methods: ["GET", "POST"] },
+  cors: { origin: env.CORS_ALLOW_ALL ? "*" : env.CORS_ORIGINS, methods: ["GET", "POST"] },
 });
 
-app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173" }));
-app.use(express.json());
+if (env.TRUST_PROXY) app.set("trust proxy", 1);
+
+app.disable("x-powered-by");
+app.use(helmet());
+app.use(compression());
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (env.CORS_ALLOW_ALL || !origin || env.CORS_ORIGINS.includes(origin)) return callback(null, true);
+      const error = new Error("Not allowed by CORS");
+      error.status = 403;
+      return callback(error);
+    },
+  })
+);
+app.use(
+  rateLimit({
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+    max: env.RATE_LIMIT_MAX,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+  })
+);
+app.use(express.json({ limit: "50kb" }));
+if (env.NODE_ENV !== "test") app.use(morgan(env.LOG_FORMAT));
+
+app.get("/api/health", (_, res) => {
+  res.json({ status: "ok", service: "stockbreakers-api" });
+});
+
+app.get("/api/ready", (_, res) => {
+  const readyState = mongoose.connection.readyState;
+  const isReady = readyState === 1;
+  res.status(isReady ? 200 : 503).json({
+    status: isReady ? "ready" : "not_ready",
+    mongo: isReady ? "connected" : "disconnected",
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -34,17 +74,32 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
 
-// Health check
-app.get("/api/health", (_, res) => res.json({ status: "ok" }));
+app.use(notFound);
+app.use(errorHandler);
 
-// MongoDB
-mongoose
-  .connect(process.env.MONGO_URI || "mongodb://localhost:27017/stockbreakers")
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.error("MongoDB error:", err));
+const start = async () => {
+  mongoose.set("strictQuery", true);
+  await mongoose.connect(env.MONGO_URI, {
+    serverSelectionTimeoutMS: 8000,
+  });
 
-// Socket.io price engine
-initPriceEngine(io);
+  console.log("MongoDB connected");
+  initPriceEngine(io);
+  server.listen(env.PORT, () => console.log(`Server running on port ${env.PORT}`));
+};
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const shutdown = (signal) => {
+  console.log(`${signal} received, shutting down...`);
+  server.close(async () => {
+    await mongoose.connection.close(false);
+    process.exit(0);
+  });
+};
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+start().catch((err) => {
+  console.error("Failed to start server:", err.message);
+  process.exit(1);
+});

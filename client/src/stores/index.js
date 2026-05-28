@@ -1,38 +1,47 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// ── Auth Store ────────────────────────────────────────────────────────────────
 export const useAuthStore = create(
   persist(
     (set) => ({
       user: null,
       token: null,
       setAuth: (user, token) => set({ user, token }),
-      updateBalance: (cashBalance) => set((s) => ({ user: { ...s.user, cashBalance } })),
+      updateBalance: (cashBalance) =>
+        set((state) => ({ user: state.user ? { ...state.user, cashBalance } : null })),
+      updateWatchlist: (watchlist) =>
+        set((state) => ({ user: state.user ? { ...state.user, watchlist } : null })),
       logout: () => set({ user: null, token: null }),
     }),
-    { name: "auth-storage" }
+    {
+      name: "stockbreakers-auth",
+      partialize: (state) => ({ user: state.user, token: state.token }),
+    }
   )
 );
 
-// ── Price Store (live via socket) ─────────────────────────────────────────────
 export const usePriceStore = create((set) => ({
   stocks: [],
-  priceMap: {},     // { AAPL: 189.5, MSFT: 415.2, ... }
+  priceMap: {},
   connected: false,
+  lastUpdated: null,
   setStocks: (stocks) => {
-    const priceMap = stocks.reduce((acc, s) => ({ ...acc, [s.ticker]: s.price }), {});
-    set({ stocks, priceMap });
+    const priceMap = stocks.reduce((acc, stock) => {
+      acc[stock.ticker] = stock.price;
+      return acc;
+    }, {});
+    set({ stocks, priceMap, lastUpdated: new Date().toISOString() });
   },
   setConnected: (connected) => set({ connected }),
 }));
 
-// ── Portfolio Store ───────────────────────────────────────────────────────────
 export const usePortfolioStore = create((set) => ({
   holdings: [],
   summary: null,
   loading: false,
+  error: "",
   setHoldings: (holdings) => set({ holdings }),
   setSummary: (summary) => set({ summary }),
   setLoading: (loading) => set({ loading }),
+  setError: (error) => set({ error }),
 }));

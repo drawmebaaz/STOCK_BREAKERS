@@ -5,6 +5,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+artifacts/
 
 # Environment files
 .env

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
@@ -174,7 +175,7 @@ function syntheticHistory(currentPrice, len = HISTORY_LEN) {
 export default function InsightsPage() {
   const stocks   = usePriceStore((s) => s.stocks);
   const priceMap = usePriceStore((s) => s.priceMap);
-  const navigate = (ticker) => window.location.href = `/trade/${ticker}`;
+  const navigate = useNavigate();
 
   const [ticker,   setTicker]   = useState("AAPL");
   const [horizon,  setHorizon]  = useState(30);
@@ -184,12 +185,17 @@ export default function InsightsPage() {
   const [suggestions, setSuggestions] = useState(null);
   const [error,    setError]    = useState("");
 
-  // Load suggestions on mount
   useEffect(() => {
     api.get("/ai/suggestions")
       .then(({ data }) => setSuggestions(data))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (stocks.length > 0 && !stocks.some((s) => s.ticker === ticker)) {
+      setTicker(stocks[0].ticker);
+    }
+  }, [stocks, ticker]);
 
   const runAnalysis = async () => {
     const price = priceMap[ticker];
@@ -214,7 +220,9 @@ export default function InsightsPage() {
     }
   };
 
-  useEffect(() => { if (result) runAnalysis(); }, [ticker]);
+  useEffect(() => {
+    if (result) runAnalysis();
+  }, [ticker]);
 
   const chartData = result ? buildChartData(result.prices, result.predict.forecast) : [];
   const stats = result?.predict?.stats;
@@ -253,7 +261,7 @@ export default function InsightsPage() {
       </div>
 
       {/* Suggestions always visible at top */}
-      <SuggestionsCard suggestions={suggestions} priceMap={priceMap} onTrade={navigate} />
+      <SuggestionsCard suggestions={suggestions} priceMap={priceMap} onTrade={(symbol) => navigate(`/trade/${symbol}`)} />
 
       {error && (
         <div className="bg-red-900/30 border border-red-800 text-red-400 text-sm rounded-lg px-4 py-3">

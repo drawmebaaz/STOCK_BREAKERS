@@ -1,0 +1,59 @@
+import dotenv from "dotenv";
+import { z } from "zod";
+
+dotenv.config();
+
+const parseBoolean = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+};
+
+const splitOrigins = (value) =>
+  String(value || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().positive().default(5000),
+  MONGO_URI: z.string().min(1).default("mongodb://localhost:27017/stockbreakers"),
+  JWT_SECRET: z.string().optional(),
+  JWT_EXPIRES_IN: z.string().default("7d"),
+  ML_SERVICE_URL: z.string().url().default("http://localhost:8000"),
+  CLIENT_URL: z.string().url().default("http://localhost:5173"),
+  CORS_ORIGINS: z.string().optional(),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(250),
+  LOG_FORMAT: z.enum(["dev", "combined", "common", "short", "tiny"]).default("dev"),
+  TRUST_PROXY: z.preprocess(parseBoolean, z.boolean()).default(false),
+});
+
+const result = schema.safeParse(process.env);
+
+if (!result.success) {
+  const details = result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
+  throw new Error(`Invalid server environment:\n${details.join("\n")}`);
+}
+
+const data = result.data;
+const isProduction = data.NODE_ENV === "production";
+const devJwtSecret = "dev-only-stockbreakers-secret-change-before-production";
+
+if (isProduction && (!data.JWT_SECRET || data.JWT_SECRET.length < 32)) {
+  throw new Error("JWT_SECRET must be set to at least 32 characters in production.");
+}
+
+const origins = Array.from(
+  new Set([...splitOrigins(data.CORS_ORIGINS), data.CLIENT_URL])
+);
+const corsAllowAll = origins.includes("*");
+
+export const env = {
+  ...data,
+  JWT_SECRET: data.JWT_SECRET || devJwtSecret,
+  CORS_ORIGINS: origins,
+  CORS_ALLOW_ALL: corsAllowAll,
+  isProduction,
+};

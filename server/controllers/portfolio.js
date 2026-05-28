@@ -1,7 +1,7 @@
 import { Holding } from "../models/index.js";
 import { getPriceMap } from "../utils/priceStore.js";
 
-export const getPortfolio = async (req, res) => {
+export const getPortfolio = async (req, res, next) => {
   try {
     const holdings = await Holding.find({ userId: req.user._id });
     const prices = getPriceMap();
@@ -10,7 +10,7 @@ export const getPortfolio = async (req, res) => {
       const currentPrice = prices[h.ticker] ?? h.avgCost;
       const currentValue = +(currentPrice * h.quantity).toFixed(2);
       const pnl = +(currentValue - h.totalInvested).toFixed(2);
-      const pnlPct = +((pnl / h.totalInvested) * 100).toFixed(2);
+      const pnlPct = h.totalInvested > 0 ? +((pnl / h.totalInvested) * 100).toFixed(2) : 0;
       return {
         ticker: h.ticker,
         quantity: h.quantity,
@@ -25,11 +25,11 @@ export const getPortfolio = async (req, res) => {
 
     res.json({ holdings: enriched });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 };
 
-export const getPortfolioSummary = async (req, res) => {
+export const getPortfolioSummary = async (req, res, next) => {
   try {
     const holdings = await Holding.find({ userId: req.user._id });
     const prices = getPriceMap();
@@ -45,7 +45,7 @@ export const getPortfolioSummary = async (req, res) => {
     });
 
     const totalValue = +(cash + stockValue).toFixed(2);
-    const pnl = +(totalValue - totalInvested - cash).toFixed(2);
+    const pnl = +(stockValue - totalInvested).toFixed(2);
     const pnlPct = totalInvested > 0 ? +((pnl / totalInvested) * 100).toFixed(2) : 0;
 
     res.json({
@@ -57,6 +57,6 @@ export const getPortfolioSummary = async (req, res) => {
       pnlPct,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 };

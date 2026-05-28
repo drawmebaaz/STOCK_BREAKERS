@@ -2,11 +2,15 @@ import axios from "axios";
 import { io } from "socket.io-client";
 import { useAuthStore } from "../stores/index.js";
 
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+const BASE = import.meta.env.VITE_API_URL || "/api";
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost:5000");
 
-// ── Axios instance ─────────────────────────────────────────────────────────────
-export const api = axios.create({ baseURL: BASE });
+export const api = axios.create({
+  baseURL: BASE,
+  timeout: 10000,
+});
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
@@ -22,5 +26,10 @@ api.interceptors.response.use(
   }
 );
 
-// ── Socket ─────────────────────────────────────────────────────────────────────
-export const socket = io(SOCKET_URL, { autoConnect: false });
+export const apiErrorMessage = (err, fallback = "Something went wrong") =>
+  err.response?.data?.error || err.response?.data?.detail || err.message || fallback;
+
+export const socket = io(SOCKET_URL, {
+  autoConnect: false,
+  transports: ["websocket", "polling"],
+});

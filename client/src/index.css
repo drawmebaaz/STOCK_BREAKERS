@@ -4,13 +4,14 @@
 
 @layer base {
   body { @apply bg-gray-950 text-gray-100 font-sans antialiased; }
+  button, input, select { @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { @apply bg-gray-900; }
   ::-webkit-scrollbar-thumb { @apply bg-gray-700 rounded-full; }
 }
 
 @layer components {
-  .card { @apply bg-gray-900 border border-gray-800 rounded-xl p-4; }
+  .card { @apply bg-gray-900 border border-gray-800 rounded-lg p-4 shadow-sm shadow-black/10; }
   .btn-primary { @apply bg-green-600 hover:bg-green-500 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
   .btn-danger  { @apply bg-red-600 hover:bg-red-500 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
   .btn-ghost   { @apply bg-gray-800 hover:bg-gray-700 text-gray-200 font-medium px-4 py-2 rounded-lg transition-colors; }

@@ -1,30 +1,36 @@
-import { useEffect } from "react";
-import { socket, api } from "../utils/api.js";
+import { useCallback, useEffect } from "react";
+import { socket, api, apiErrorMessage } from "../utils/api.js";
 import { usePriceStore, usePortfolioStore } from "../stores/index.js";
 
-// ── useSocket: connect on mount, update price store on events ─────────────────
 export const useSocket = () => {
   const { setStocks, setConnected } = usePriceStore();
 
   useEffect(() => {
+    const handleConnect = () => setConnected(true);
+    const handleDisconnect = () => setConnected(false);
+
+    api.get("/stocks").then(({ data }) => setStocks(data.stocks)).catch(() => {});
+
     socket.connect();
-    socket.on("connect",      () => setConnected(true));
-    socket.on("disconnect",   () => setConnected(false));
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
     socket.on("price_update", setStocks);
 
     return () => {
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
       socket.off("price_update", setStocks);
       socket.disconnect();
     };
-  }, []);
+  }, [setConnected, setStocks]);
 };
 
-// ── usePortfolio: fetch holdings + summary ────────────────────────────────────
 export const usePortfolio = () => {
-  const { setHoldings, setSummary, setLoading } = usePortfolioStore();
+  const { setHoldings, setSummary, setLoading, setError } = usePortfolioStore();
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const [holdingsRes, summaryRes] = await Promise.all([
         api.get("/portfolio"),
@@ -32,13 +38,16 @@ export const usePortfolio = () => {
       ]);
       setHoldings(holdingsRes.data.holdings);
       setSummary(summaryRes.data);
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not load portfolio"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [setError, setHoldings, setLoading, setSummary]);
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
   return { refresh };
 };

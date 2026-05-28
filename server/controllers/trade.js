@@ -1,24 +1,24 @@
 import { User, Holding, Transaction } from "../models/index.js";
 import { getPriceMap } from "../utils/priceStore.js";
 
-export const buyStock = async (req, res) => {
+const getLivePrice = (ticker) => {
+  const price = getPriceMap()[ticker];
+  return typeof price === "number" && Number.isFinite(price) ? price : null;
+};
+
+export const buyStock = async (req, res, next) => {
   try {
     const { ticker, quantity } = req.body;
-    if (!ticker || !quantity || quantity <= 0)
-      return res.status(400).json({ error: "Invalid ticker or quantity" });
-
-    const prices = getPriceMap();
-    const price = prices[ticker];
+    const price = getLivePrice(ticker);
     if (!price) return res.status(404).json({ error: "Stock not found" });
 
     const total = +(quantity * price).toFixed(2);
-    const user = await User.findById(req.user._id);
-
-    if (user.cashBalance < total)
-      return res.status(400).json({ error: "Insufficient funds" });
-
-    user.cashBalance = +(user.cashBalance - total).toFixed(2);
-    await user.save();
+    const user = await User.findOneAndUpdate(
+      { _id: req.user._id, cashBalance: { $gte: total } },
+      { $inc: { cashBalance: -total } },
+      { new: true, runValidators: true }
+    );
+    if (!user) return res.status(400).json({ error: "Insufficient funds" });
 
     let holding = await Holding.findOne({ userId: user._id, ticker });
     if (holding) {
@@ -41,18 +41,14 @@ export const buyStock = async (req, res) => {
 
     res.json({ success: true, cashBalance: user.cashBalance });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 };
 
-export const sellStock = async (req, res) => {
+export const sellStock = async (req, res, next) => {
   try {
     const { ticker, quantity } = req.body;
-    if (!ticker || !quantity || quantity <= 0)
-      return res.status(400).json({ error: "Invalid ticker or quantity" });
-
-    const prices = getPriceMap();
-    const price = prices[ticker];
+    const price = getLivePrice(ticker);
     if (!price) return res.status(404).json({ error: "Stock not found" });
 
     const user = await User.findById(req.user._id);
@@ -79,6 +75,6 @@ export const sellStock = async (req, res) => {
 
     res.json({ success: true, cashBalance: user.cashBalance });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 };

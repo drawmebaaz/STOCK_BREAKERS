@@ -6,6 +6,19 @@ It is designed as a resume-ready full-stack project: React for the trading cockp
 
 > Educational paper-trading app only. It does not provide financial advice or execute real trades.
 
+## Temporary Live Demo
+
+Live app: https://listing-designed-prizes-sheets.trycloudflare.com
+
+Demo login:
+
+```text
+Email:    demo@stockbreakers.local
+Password: DemoPass123!
+```
+
+This demo is served through a free Cloudflare quick tunnel, so the link works while the local Docker stack and tunnel process are running.
+
 ## Highlights
 
 - JWT authenticated accounts with persisted portfolio state

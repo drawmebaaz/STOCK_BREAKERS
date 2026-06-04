@@ -1,22 +1,23 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LineChart } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { useAuthStore } from "../stores/index.js";
 
-function AuthCard({ title, children }) {
+function AuthCard({ title, subtitle, children }) {
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-green-500/10 text-green-300">
-            <LineChart size={24} />
+    <div className="workspace-shell flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="w-full max-w-md">
+        <div className="mb-7">
+          <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-800 bg-slate-950 text-slate-300">
+            <ShieldCheck size={20} strokeWidth={1.8} />
           </div>
-          <h1 className="text-2xl font-bold text-green-300">StockBreakers</h1>
-          <p className="text-gray-500 text-sm mt-1">Paper trading with AI risk insights</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">StockBreakers</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">{title}</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{subtitle}</p>
         </div>
-        <div className="card">
-          <h2 className="text-lg font-semibold mb-6">{title}</h2>
+
+        <div className="panel p-5">
           {children}
         </div>
       </div>
@@ -47,33 +48,48 @@ export function LoginPage() {
   };
 
   return (
-    <AuthCard title="Welcome back">
-      <form onSubmit={submit} className="flex flex-col gap-4">
-        <input
-          className="input"
-          type="email"
-          placeholder="Email"
-          autoComplete="email"
-          value={form.email}
-          onChange={(event) => setForm({ ...form, email: event.target.value })}
-          required
-        />
-        <input
-          className="input"
-          type="password"
-          placeholder="Password"
-          autoComplete="current-password"
-          value={form.password}
-          onChange={(event) => setForm({ ...form, password: event.target.value })}
-          required
-        />
-        {error && <p className="text-red-300 text-sm">{error}</p>}
+    <AuthCard
+      title="Sign in to your trading lab"
+      subtitle="Practice with virtual funds, monitor live simulated markets, and review risk before placing orders."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="stat-label mb-1.5 block">Email</label>
+          <input
+            className="input"
+            type="email"
+            placeholder="you@example.com"
+            autoComplete="email"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+            required
+          />
+        </div>
+        <div>
+          <label className="stat-label mb-1.5 block">Password</label>
+          <input
+            className="input"
+            type="password"
+            placeholder="Enter password"
+            autoComplete="current-password"
+            value={form.password}
+            onChange={(event) => setForm({ ...form, password: event.target.value })}
+            required
+          />
+        </div>
+
+        {error && <p className="alert-error">{error}</p>}
+
         <button className="btn-primary w-full" disabled={loading}>
           {loading ? "Signing in..." : "Sign in"}
         </button>
       </form>
-      <p className="text-center text-gray-500 text-sm mt-4">
-        No account? <Link to="/register" className="text-green-300 hover:underline">Register</Link>
+
+      <p className="mt-5 text-center text-sm text-slate-500">
+        New to StockBreakers?{" "}
+        <Link to="/register" className="font-medium text-slate-200 hover:text-white">
+          Create account
+        </Link>
       </p>
     </AuthCard>
   );
@@ -102,42 +118,60 @@ export function RegisterPage() {
   };
 
   return (
-    <AuthCard title="Create account">
-      <form onSubmit={submit} className="flex flex-col gap-4">
-        <input
-          className="input"
-          placeholder="Full name"
-          autoComplete="name"
-          value={form.name}
-          onChange={(event) => setForm({ ...form, name: event.target.value })}
-          required
-        />
-        <input
-          className="input"
-          type="email"
-          placeholder="Email"
-          autoComplete="email"
-          value={form.email}
-          onChange={(event) => setForm({ ...form, email: event.target.value })}
-          required
-        />
-        <input
-          className="input"
-          type="password"
-          placeholder="Password (min 8)"
-          autoComplete="new-password"
-          value={form.password}
-          onChange={(event) => setForm({ ...form, password: event.target.value })}
-          minLength={8}
-          required
-        />
-        {error && <p className="text-red-300 text-sm">{error}</p>}
+    <AuthCard
+      title="Create a paper trading account"
+      subtitle="Start with $50,000 in virtual cash and learn market behavior without risking real capital."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="stat-label mb-1.5 block">Full name</label>
+          <input
+            className="input"
+            placeholder="Sourabh Rawat"
+            autoComplete="name"
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            required
+          />
+        </div>
+        <div>
+          <label className="stat-label mb-1.5 block">Email</label>
+          <input
+            className="input"
+            type="email"
+            placeholder="you@example.com"
+            autoComplete="email"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+            required
+          />
+        </div>
+        <div>
+          <label className="stat-label mb-1.5 block">Password</label>
+          <input
+            className="input"
+            type="password"
+            placeholder="Minimum 8 characters"
+            autoComplete="new-password"
+            value={form.password}
+            onChange={(event) => setForm({ ...form, password: event.target.value })}
+            minLength={8}
+            required
+          />
+        </div>
+
+        {error && <p className="alert-error">{error}</p>}
+
         <button className="btn-primary w-full" disabled={loading}>
-          {loading ? "Creating..." : "Create account with $50,000 virtual cash"}
+          {loading ? "Creating..." : "Create account"}
         </button>
       </form>
-      <p className="text-center text-gray-500 text-sm mt-4">
-        Have an account? <Link to="/login" className="text-green-300 hover:underline">Sign in</Link>
+
+      <p className="mt-5 text-center text-sm text-slate-500">
+        Already have an account?{" "}
+        <Link to="/login" className="font-medium text-slate-200 hover:text-white">
+          Sign in
+        </Link>
       </p>
     </AuthCard>
   );

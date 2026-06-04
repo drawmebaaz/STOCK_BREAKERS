@@ -18,10 +18,21 @@ export default function TradePage() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [holding, setHolding] = useState(null);
+  const [reviewing, setReviewing] = useState(false);
 
   const stock = stocks.find((item) => item.ticker === ticker);
   const price = priceMap[ticker] ?? stock?.price ?? 0;
   const total = useMemo(() => +(price * qty).toFixed(2), [price, qty]);
+  const estimatedCash = mode === "buy"
+    ? Number(user?.cashBalance ?? 0) - total
+    : Number(user?.cashBalance ?? 0) + total;
+  const sellCapacity = holding?.quantity || 0;
+  const validation =
+    mode === "buy" && estimatedCash < 0
+      ? "Insufficient virtual cash for this order."
+      : mode === "sell" && qty > sellCapacity
+        ? "Quantity exceeds shares currently held."
+        : "";
 
   useEffect(() => {
     if (paramTicker) setTicker(paramTicker.toUpperCase());
@@ -36,15 +47,22 @@ export default function TradePage() {
   }, [navigate, stocks, ticker]);
 
   useEffect(() => {
+    setReviewing(false);
     if (!ticker) return;
     api.get("/portfolio").then(({ data }) => {
       const nextHolding = data.holdings.find((item) => item.ticker === ticker);
       setHolding(nextHolding || null);
     }).catch(() => setHolding(null));
-  }, [ticker]);
+  }, [ticker, mode, qty]);
 
   const execute = async () => {
-    if (qty <= 0 || !price) return;
+    if (qty <= 0 || !price || validation) return;
+    if (!reviewing) {
+      setReviewing(true);
+      setStatus(null);
+      return;
+    }
+
     setLoading(true);
     setStatus(null);
     try {
@@ -54,6 +72,7 @@ export default function TradePage() {
         ok: true,
         msg: `${mode === "buy" ? "Bought" : "Sold"} ${qty} ${ticker} at ${currency(price)}`,
       });
+      setReviewing(false);
 
       const { data: portfolio } = await api.get("/portfolio");
       setHolding(portfolio.holdings.find((item) => item.ticker === ticker) || null);
@@ -64,19 +83,28 @@ export default function TradePage() {
     }
   };
 
-  const canSubmit = !loading && Boolean(stock) && qty > 0 && price > 0;
+  const canSubmit = !loading && Boolean(stock) && qty > 0 && price > 0 && !validation;
+  const actionLabel = reviewing
+    ? `Confirm ${mode === "buy" ? "buy" : "sell"} order`
+    : `Review ${mode === "buy" ? "buy" : "sell"} order`;
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Trade</h1>
-        <p className="text-xs text-gray-500 mt-1">Place simulated buy and sell orders against the live paper market</p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="stat-label">Order management</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Trade Desk</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Place intentional simulated orders with a clear virtual-cash breakdown.
+          </p>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-        <div className="card space-y-4">
-          <div>
-            <label className="stat-label mb-1 block">Select stock</label>
+      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+        <section className="panel p-4">
+          <h2 className="section-title">Instrument</h2>
+          <div className="mt-4">
+            <label className="stat-label mb-1.5 block">Select stock</label>
             <select
               className="input"
               value={ticker}
@@ -93,98 +121,136 @@ export default function TradePage() {
           </div>
 
           {stock ? (
-            <div className="rounded-lg bg-gray-800 px-4 py-3">
+            <div className="mt-4 rounded-md border border-slate-800 bg-slate-950/50 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-2xl font-bold font-mono">{currency(price)}</p>
-                  <p className="text-xs text-gray-500">{stock.name}</p>
+                  <p className="ticker-chip">{stock.ticker}</p>
+                  <p className="mt-3 mono text-3xl font-semibold text-slate-50">{currency(price)}</p>
+                  <p className="mt-1 text-sm text-slate-500">{stock.name}</p>
                 </div>
-                <span className={stock.change >= 0 ? "badge-up text-sm" : "badge-down text-sm"}>
+                <span className={stock.change >= 0 ? "badge-up" : "badge-down"}>
                   {signedPercent(stock.change)}
                 </span>
               </div>
-              <p className="mt-3 text-xs text-gray-500">{stock.sector}</p>
+              <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-800 pt-4">
+                <div>
+                  <p className="stat-label">Sector</p>
+                  <p className="mt-1 text-sm text-slate-300">{stock.sector}</p>
+                </div>
+                <div>
+                  <p className="stat-label">Held</p>
+                  <p className="mono mt-1 text-sm text-slate-300">{sellCapacity} shares</p>
+                </div>
+              </div>
             </div>
           ) : (
-            <div className="rounded-lg bg-gray-800 px-4 py-6 text-center text-sm text-gray-500">
-              Connecting to market stream...
-            </div>
+            <div className="mt-4 empty-state min-h-32">Connecting to market stream...</div>
           )}
-        </div>
+        </section>
 
-        <div className="card space-y-4">
-          <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-gray-700">
-            <button
-              onClick={() => setMode("buy")}
-              className={`py-2 text-sm font-medium transition-colors ${mode === "buy" ? "bg-green-600 text-white" : "text-gray-400 hover:bg-gray-800"}`}
-            >
-              Buy
-            </button>
-            <button
-              onClick={() => setMode("sell")}
-              className={`py-2 text-sm font-medium transition-colors ${mode === "sell" ? "bg-red-600 text-white" : "text-gray-400 hover:bg-gray-800"}`}
-            >
-              Sell
-            </button>
+        <section className="panel overflow-hidden">
+          <div className="border-b border-slate-800 px-4 py-3">
+            <h2 className="section-title">Order Ticket</h2>
+            <p className="section-subtitle mt-1">All orders use virtual funds only.</p>
           </div>
 
-          <div>
-            <label className="stat-label mb-1 block">Quantity</label>
-            <input
-              type="number"
-              min="1"
-              max="10000"
-              value={qty}
-              onChange={(event) => setQty(Math.max(1, parseInt(event.target.value, 10) || 1))}
-              className="input"
-            />
-          </div>
-
-          <div className="rounded-lg bg-gray-800 px-4 py-3 space-y-1.5 text-sm">
-            <div className="flex justify-between"><span className="text-gray-400">Price</span><span>{currency(price)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-400">Quantity</span><span>{qty}</span></div>
-            <div className="flex justify-between font-semibold border-t border-gray-700 pt-1.5 mt-1.5">
-              <span>Total</span><span>{currency(total)}</span>
-            </div>
-            {mode === "buy" && (
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Cash available</span>
-                <span>{currency(user?.cashBalance)}</span>
+          <div className="grid gap-6 p-4 lg:grid-cols-[1fr_340px]">
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 overflow-hidden rounded-md border border-slate-800 bg-slate-950/60">
+                <button
+                  onClick={() => { setMode("buy"); setReviewing(false); }}
+                  className={`py-2.5 text-sm font-semibold transition-colors ${
+                    mode === "buy" ? "bg-emerald-500 text-slate-950" : "text-slate-500 hover:bg-slate-900 hover:text-slate-200"
+                  }`}
+                >
+                  Buy
+                </button>
+                <button
+                  onClick={() => { setMode("sell"); setReviewing(false); }}
+                  className={`py-2.5 text-sm font-semibold transition-colors ${
+                    mode === "sell" ? "bg-red-500 text-white" : "text-slate-500 hover:bg-slate-900 hover:text-slate-200"
+                  }`}
+                >
+                  Sell
+                </button>
               </div>
-            )}
-            {mode === "sell" && (
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Shares held</span><span>{holding?.quantity || 0}</span>
+
+              <div>
+                <label className="stat-label mb-1.5 block">Quantity</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10000"
+                  value={qty}
+                  onChange={(event) => {
+                    setQty(Math.max(1, parseInt(event.target.value, 10) || 1));
+                    setReviewing(false);
+                  }}
+                  className="input mono"
+                />
               </div>
-            )}
+
+              {validation && <div className="alert-error">{validation}</div>}
+
+              {reviewing && !validation && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  Review this simulated {mode} order before confirming. No real money is used.
+                </div>
+              )}
+
+              {status && (
+                <div className={status.ok ? "alert-success flex items-start gap-2" : "alert-error flex items-start gap-2"}>
+                  {status.ok ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
+                  <span>{status.msg}</span>
+                </div>
+              )}
+
+              <button
+                onClick={execute}
+                disabled={!canSubmit}
+                className={`w-full ${mode === "buy" ? "btn-buy" : "btn-sell"}`}
+              >
+                {loading ? "Processing..." : actionLabel}
+              </button>
+            </div>
+
+            <aside className="rounded-md border border-slate-800 bg-slate-950/50 p-4">
+              <h3 className="section-title">Order Breakdown</h3>
+              <div className="mt-4 space-y-3 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Last price</span>
+                  <span className="mono text-slate-100">{currency(price)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Quantity</span>
+                  <span className="mono text-slate-100">{qty}</span>
+                </div>
+                <div className="flex justify-between gap-4 border-t border-slate-800 pt-3">
+                  <span className="font-medium text-slate-300">Estimated value</span>
+                  <span className="mono font-semibold text-slate-50">{currency(total)}</span>
+                </div>
+                <div className="flex justify-between gap-4 pt-2">
+                  <span className="text-slate-500">Cash before</span>
+                  <span className="mono text-slate-300">{currency(user?.cashBalance)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Cash after</span>
+                  <span className={`mono ${estimatedCash >= 0 ? "text-slate-300" : "text-red-300"}`}>
+                    {currency(estimatedCash)}
+                  </span>
+                </div>
+              </div>
+
+              {holding && (
+                <div className="mt-5 border-t border-slate-800 pt-4 text-xs text-slate-500">
+                  Current position:{" "}
+                  <span className="mono text-slate-300">{holding.quantity}</span> shares at avg cost{" "}
+                  <span className="mono text-slate-300">{currency(holding.avgCost)}</span>.
+                </div>
+              )}
+            </aside>
           </div>
-
-          {holding && (
-            <div className="rounded-lg bg-gray-800/50 px-3 py-2 text-xs text-gray-500">
-              Current position: {holding.quantity} shares, avg cost {currency(holding.avgCost)},{" "}
-              <span className={holding.pnl >= 0 ? "text-green-300" : "text-red-300"}>
-                {holding.pnl >= 0 ? "+" : ""}{currency(holding.pnl)} ({signedPercent(holding.pnlPct, 1)})
-              </span>
-            </div>
-          )}
-
-          {status && (
-            <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${
-              status.ok ? "bg-green-950/50 text-green-300" : "bg-red-950/50 text-red-300"
-            }`}>
-              {status.ok ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
-              <span>{status.msg}</span>
-            </div>
-          )}
-
-          <button
-            onClick={execute}
-            disabled={!canSubmit}
-            className={`w-full py-2.5 font-semibold rounded-lg transition-colors ${mode === "buy" ? "btn-primary" : "btn-danger"}`}
-          >
-            {loading ? "Processing..." : `${mode === "buy" ? "Buy" : "Sell"} ${qty} share${qty !== 1 ? "s" : ""} of ${ticker}`}
-          </button>
-        </div>
+        </section>
       </div>
     </div>
   );

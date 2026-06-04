@@ -1,6 +1,23 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { currency } from "../utils/format.js";
+
+function Metric({ label, value, sub, tone = "neutral" }) {
+  const toneClass = {
+    positive: "text-emerald-300",
+    negative: "text-red-300",
+    neutral: "text-slate-50",
+  }[tone];
+
+  return (
+    <div className="metric-card">
+      <p className="stat-label">{label}</p>
+      <p className={`stat-value mt-1 ${toneClass}`}>{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
+    </div>
+  );
+}
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
@@ -8,93 +25,131 @@ export default function TransactionsPage() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
 
-  useEffect(() => {
-    api.get("/transactions")
-      .then(({ data }) => setTransactions(data.transactions))
-      .catch((err) => setError(apiErrorMessage(err, "Could not load transactions")))
-      .finally(() => setLoading(false));
+  const loadTransactions = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const { data } = await api.get("/transactions");
+      setTransactions(data.transactions || []);
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not load transactions"));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+
   const filtered = useMemo(
-    () => filter === "all" ? transactions : transactions.filter((transaction) => transaction.type === filter),
+    () => (filter === "all" ? transactions : transactions.filter((transaction) => transaction.type === filter)),
     [filter, transactions]
   );
 
-  const totalBought = transactions.filter((transaction) => transaction.type === "buy").reduce((sum, transaction) => sum + transaction.total, 0);
-  const totalSold = transactions.filter((transaction) => transaction.type === "sell").reduce((sum, transaction) => sum + transaction.total, 0);
+  const totalBought = transactions
+    .filter((transaction) => transaction.type === "buy")
+    .reduce((sum, transaction) => sum + transaction.total, 0);
+  const totalSold = transactions
+    .filter((transaction) => transaction.type === "sell")
+    .reduce((sum, transaction) => sum + transaction.total, 0);
+  const netCash = totalSold - totalBought;
+  const lastTrade = transactions[0]?.createdAt;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Transaction History</h1>
-        <p className="text-xs text-gray-500 mt-1">Auditable order trail for all simulated trades</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="stat-label">Execution record</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Transaction Ledger</h1>
+          <p className="mt-1 text-sm text-slate-500">Auditable order trail for every simulated fill.</p>
+        </div>
+        <button onClick={loadTransactions} disabled={loading} className="btn-ghost">
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          Refresh
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="card">
-          <p className="stat-label mb-1">Total transactions</p>
-          <p className="stat-value">{transactions.length}</p>
-        </div>
-        <div className="card">
-          <p className="stat-label mb-1">Total bought</p>
-          <p className="stat-value text-red-300">{currency(totalBought)}</p>
-        </div>
-        <div className="card">
-          <p className="stat-label mb-1">Total sold</p>
-          <p className="stat-value text-green-300">{currency(totalSold)}</p>
-        </div>
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Metric label="Total orders" value={transactions.length} />
+        <Metric label="Buy notional" value={currency(totalBought)} tone="negative" />
+        <Metric label="Sell notional" value={currency(totalSold)} tone="positive" />
+        <Metric
+          label="Net cash flow"
+          value={`${netCash >= 0 ? "+" : ""}${currency(netCash)}`}
+          sub={lastTrade ? new Date(lastTrade).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "No fills yet"}
+          tone={netCash >= 0 ? "positive" : "negative"}
+        />
       </div>
 
-      {error && <div className="rounded-lg border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-300">{error}</div>}
+      {error && <div className="alert-error">{error}</div>}
 
-      <div className="flex gap-2">
-        {["all", "buy", "sell"].map((item) => (
-          <button
-            key={item}
-            onClick={() => setFilter(item)}
-            className={`px-4 py-1.5 rounded-lg text-sm capitalize transition-colors ${
-              filter === item ? "bg-green-600 text-white" : "btn-ghost"
-            }`}
-          >
-            {item === "all" ? "All" : item === "buy" ? "Buys" : "Sells"}
-          </button>
-        ))}
-      </div>
+      <div className="panel overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="section-title">Order History</h2>
+            <p className="section-subtitle mt-1">{filtered.length} rows in current view.</p>
+          </div>
+          <div className="inline-flex rounded-md border border-slate-800 bg-slate-950/60 p-1">
+            {[
+              { id: "all", label: "All" },
+              { id: "buy", label: "Buys" },
+              { id: "sell", label: "Sells" },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setFilter(item.id)}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  filter === item.id ? "bg-slate-100 text-slate-950" : "text-slate-500 hover:text-slate-200"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div className="card p-0 overflow-hidden">
         {loading ? (
-          <p className="text-gray-500 text-sm p-8 text-center">Loading...</p>
+          <div className="space-y-3 p-4">
+            {[1, 2, 3, 4, 5].map((item) => <div key={item} className="skeleton h-10" />)}
+          </div>
         ) : filtered.length === 0 ? (
-          <p className="text-gray-500 text-sm p-8 text-center">
-            No {filter !== "all" ? filter : ""} transactions yet.
-          </p>
+          <div className="empty-state">
+            <p>No orders match this view.</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="max-h-[680px] overflow-auto">
+            <table className="data-table">
               <thead>
-                <tr className="text-gray-500 border-b border-gray-800 text-xs uppercase">
-                  {["Type", "Ticker", "Qty", "Price", "Total", "Date"].map((header) => (
-                    <th key={header} className="px-4 py-2 text-left">{header}</th>
-                  ))}
+                <tr>
+                  <th>Side</th>
+                  <th>Instrument</th>
+                  <th className="text-right">Quantity</th>
+                  <th className="text-right">Fill Price</th>
+                  <th className="text-right">Notional</th>
+                  <th>Timestamp</th>
+                  <th>Reference</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((transaction) => (
-                  <tr key={transaction._id} className="border-b border-gray-800 hover:bg-gray-800/30">
-                    <td className="px-4 py-3">
+                  <tr key={transaction._id}>
+                    <td>
                       <span className={transaction.type === "buy" ? "badge-up" : "badge-down"}>
                         {transaction.type.toUpperCase()}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-medium">{transaction.ticker}</td>
-                    <td className="px-4 py-3">{transaction.quantity}</td>
-                    <td className="px-4 py-3 font-mono">{currency(transaction.price)}</td>
-                    <td className="px-4 py-3 font-mono font-medium">
-                      <span className={transaction.type === "buy" ? "text-red-300" : "text-green-300"}>
+                    <td>
+                      <span className="ticker-chip">{transaction.ticker}</span>
+                    </td>
+                    <td className="text-right mono">{transaction.quantity}</td>
+                    <td className="text-right mono">{currency(transaction.price)}</td>
+                    <td className="text-right mono font-semibold">
+                      <span className={transaction.type === "buy" ? "text-red-300" : "text-emerald-300"}>
                         {transaction.type === "buy" ? "-" : "+"}{currency(transaction.total)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">
+                    <td className="text-slate-500">
                       {new Date(transaction.createdAt).toLocaleString("en-IN", {
                         day: "2-digit",
                         month: "short",
@@ -103,6 +158,7 @@ export default function TransactionsPage() {
                         minute: "2-digit",
                       })}
                     </td>
+                    <td className="mono text-xs text-slate-600">{String(transaction._id).slice(-8).toUpperCase()}</td>
                   </tr>
                 ))}
               </tbody>

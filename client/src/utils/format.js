@@ -1,10 +1,12 @@
 export const currency = (value, options = {}) => {
   const amount = Number(value ?? 0);
+  const maximumFractionDigits = options.maximumFractionDigits ?? 2;
+  const minimumFractionDigits = Math.min(options.minimumFractionDigits ?? 2, maximumFractionDigits);
   return amount.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: options.minimumFractionDigits ?? 2,
-    maximumFractionDigits: options.maximumFractionDigits ?? 2,
+    minimumFractionDigits,
+    maximumFractionDigits,
   });
 };
 

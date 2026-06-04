@@ -6,12 +6,19 @@ import { usePortfolio } from "../hooks/index.js";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
 
-function SummaryCard({ label, value, sub, color = "text-white" }) {
+function Metric({ label, value, sub, tone = "neutral" }) {
+  const toneClass = {
+    positive: "text-emerald-300",
+    negative: "text-red-300",
+    warning: "text-amber-300",
+    neutral: "text-slate-50",
+  }[tone];
+
   return (
-    <div className="card">
-      <p className="stat-label mb-1">{label}</p>
-      <p className={`stat-value ${color}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+    <div className="metric-card">
+      <p className="stat-label">{label}</p>
+      <p className={`stat-value mt-1 ${toneClass}`}>{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
   );
 }
@@ -21,32 +28,34 @@ function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
   const inWatch = watchlist.includes(stock.ticker);
 
   return (
-    <tr className="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
+    <tr>
+      <td>
+        <div className="flex items-center gap-3">
           <button
             onClick={() => onToggleWatch(stock.ticker)}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-              inWatch ? "text-yellow-300" : "text-gray-600 hover:bg-gray-800 hover:text-gray-300"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+              inWatch
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                : "border-transparent text-slate-600 hover:border-slate-800 hover:text-slate-300"
             }`}
             title={inWatch ? "Remove from watchlist" : "Add to watchlist"}
             aria-label={inWatch ? "Remove from watchlist" : "Add to watchlist"}
           >
-            <Star size={16} fill={inWatch ? "currentColor" : "none"} />
+            <Star size={15} fill={inWatch ? "currentColor" : "none"} />
           </button>
           <div>
-            <p className="font-medium text-white">{stock.ticker}</p>
-            <p className="text-xs text-gray-500">{stock.name}</p>
+            <p className="ticker-chip">{stock.ticker}</p>
+            <p className="mt-1 text-xs text-slate-500">{stock.name}</p>
           </div>
         </div>
       </td>
-      <td className="px-4 py-3 text-right font-mono">{currency(stock.price)}</td>
-      <td className="px-4 py-3 text-right">
+      <td className="text-right mono text-slate-100">{currency(stock.price)}</td>
+      <td className="text-right">
         <span className={isUp ? "badge-up" : "badge-down"}>{signedPercent(stock.change)}</span>
       </td>
-      <td className="px-4 py-3 text-gray-500 text-sm">{stock.sector}</td>
-      <td className="px-4 py-3 text-right">
-        <button onClick={() => onTrade(stock.ticker)} className="text-xs btn-ghost py-1 px-3">
+      <td className="text-slate-500">{stock.sector}</td>
+      <td className="text-right">
+        <button onClick={() => onTrade(stock.ticker)} className="btn-ghost px-3 py-1.5 text-xs">
           Trade
         </button>
       </td>
@@ -100,73 +109,150 @@ export default function DashboardPage() {
     );
   }, [search, stocks]);
 
+  const watchedStocks = stocks.filter((stock) => watchlist.includes(stock.ticker));
+  const gainers = stocks.filter((stock) => stock.change >= 0).length;
+  const decliners = stocks.filter((stock) => stock.change < 0).length;
+  const strongest = [...stocks].sort((a, b) => b.change - a.change)[0];
+  const weakest = [...stocks].sort((a, b) => a.change - b.change)[0];
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Dashboard</h1>
-          <p className="text-xs text-gray-500 mt-1">Live paper market, watchlist, and portfolio snapshot</p>
+          <p className="stat-label">Trading workspace</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Portfolio Overview</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Live simulated prices, virtual cash, watchlist, and portfolio exposure.
+          </p>
         </div>
+        <button onClick={() => navigate("/trade")} className="btn-primary">
+          Open Trade Desk
+        </button>
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <SummaryCard label="Total Value" value={currency(summary.totalValue)} />
-          <SummaryCard label="Cash" value={currency(summary.cash)} />
-          <SummaryCard label="Stock Value" value={currency(summary.stockValue)} />
-          <SummaryCard
-            label="P&L"
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <Metric label="Total equity" value={currency(summary.totalValue)} />
+          <Metric label="Virtual cash" value={currency(summary.cash)} />
+          <Metric label="Market value" value={currency(summary.stockValue)} />
+          <Metric
+            label="Unrealized P&L"
             value={`${summary.pnl >= 0 ? "+" : ""}${currency(summary.pnl)}`}
             sub={signedPercent(summary.pnlPct)}
-            color={summary.pnl >= 0 ? "text-green-300" : "text-red-300"}
+            tone={summary.pnl >= 0 ? "positive" : "negative"}
           />
         </div>
       )}
 
-      {error && <div className="rounded-lg border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-300">{error}</div>}
+      {error && <div className="alert-error">{error}</div>}
 
-      <div className="card p-0 overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-gray-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="font-medium">Live Market</h2>
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={15} />
-            <input
-              className="input py-1.5 pl-9 text-sm"
-              placeholder="Search ticker, company, sector"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+        <div className="panel overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-slate-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="section-title">Market Watch</h2>
+              <p className="section-subtitle mt-1">{stocks.length} simulated instruments streaming</p>
+            </div>
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={15} />
+              <input
+                className="input py-1.5 pl-9"
+                placeholder="Search ticker, company, sector"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
           </div>
+
+          <div className="max-h-[620px] overflow-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Instrument</th>
+                  <th className="text-right">Last</th>
+                  <th className="text-right">Move</th>
+                  <th>Sector</th>
+                  <th className="text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((stock) => (
+                  <PriceRow
+                    key={stock.ticker}
+                    stock={stock}
+                    watchlist={watchlist}
+                    onTrade={(ticker) => navigate(`/trade/${ticker}`)}
+                    onToggleWatch={toggleWatch}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {filtered.length === 0 && (
+            <div className="empty-state">
+              <p>{stocks.length === 0 ? "Connecting to market stream..." : "No instruments match your search."}</p>
+            </div>
+          )}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-gray-500 border-b border-gray-800">
-                <th className="px-4 py-2 text-left">Stock</th>
-                <th className="px-4 py-2 text-right">Price</th>
-                <th className="px-4 py-2 text-right">Change</th>
-                <th className="px-4 py-2 text-left">Sector</th>
-                <th className="px-4 py-2 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((stock) => (
-                <PriceRow
-                  key={stock.ticker}
-                  stock={stock}
-                  watchlist={watchlist}
-                  onTrade={(ticker) => navigate(`/trade/${ticker}`)}
-                  onToggleWatch={toggleWatch}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length === 0 && (
-          <p className="px-4 py-8 text-center text-sm text-gray-500">
-            {stocks.length === 0 ? "Connecting to market stream..." : "No stocks match your search."}
-          </p>
-        )}
+
+        <aside className="space-y-4">
+          <div className="panel p-4">
+            <h2 className="section-title">Market Breadth</h2>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
+                <p className="stat-label">Advancers</p>
+                <p className="mono mt-1 text-lg font-semibold text-emerald-300">{gainers}</p>
+              </div>
+              <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
+                <p className="stat-label">Decliners</p>
+                <p className="mono mt-1 text-lg font-semibold text-red-300">{decliners}</p>
+              </div>
+            </div>
+            <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-slate-500">Strongest tape</span>
+                <span className="mono text-sm text-emerald-300">
+                  {strongest ? `${strongest.ticker} ${signedPercent(strongest.change)}` : "--"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-slate-500">Weakest tape</span>
+                <span className="mono text-sm text-red-300">
+                  {weakest ? `${weakest.ticker} ${signedPercent(weakest.change)}` : "--"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="panel p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="section-title">Watchlist</h2>
+              <span className="badge-neutral">{watchedStocks.length}</span>
+            </div>
+            <div className="mt-4 space-y-2">
+              {watchedStocks.length === 0 ? (
+                <p className="text-sm text-slate-500">Star instruments from Market Watch to monitor them here.</p>
+              ) : (
+                watchedStocks.map((stock) => (
+                  <button
+                    key={stock.ticker}
+                    onClick={() => navigate(`/trade/${stock.ticker}`)}
+                    className="flex w-full items-center justify-between rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2 text-left transition-colors hover:border-slate-700 hover:bg-slate-900"
+                  >
+                    <span>
+                      <span className="ticker-chip">{stock.ticker}</span>
+                      <span className="ml-2 text-xs text-slate-500">{stock.sector}</span>
+                    </span>
+                    <span className={stock.change >= 0 ? "badge-up" : "badge-down"}>
+                      {signedPercent(stock.change)}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

@@ -21,19 +21,24 @@ const Protected = ({ children }) => {
 const AppLayout = ({ children }) => {
   useSocket();
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950">
+    <div className="workspace-shell flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Navbar />
-        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 xl:p-7">
+          <div className="mx-auto max-w-[1500px]">{children}</div>
+        </main>
       </div>
     </div>
   );
 };
 
 const PageFallback = () => (
-  <div className="flex min-h-screen items-center justify-center bg-gray-950 text-sm text-gray-500">
-    Loading...
+  <div className="workspace-shell flex min-h-screen items-center justify-center text-sm text-slate-500">
+    <div className="flex items-center gap-3">
+      <span className="h-2 w-2 animate-pulse rounded-full bg-slate-500" />
+      Loading workspace...
+    </div>
   </div>
 );
 

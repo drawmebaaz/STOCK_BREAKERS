@@ -1,14 +1,16 @@
 # StockBreakers
 
-StockBreakers is a production-minded paper-trading platform with live simulated market data, portfolio accounting, authenticated trading, transaction history, and an AI insights service for Monte Carlo forecasts, sentiment signals, risk scoring, and opportunity suggestions.
+StockBreakers is a production-minded paper trading and stock analytics platform. It combines a premium React trading workspace, authenticated portfolio accounting, real-time simulated market data, and a FastAPI quantitative analytics service for Monte Carlo forecasting, downside risk, and signal-based research.
 
-It is designed as a resume-ready full-stack project: React for the trading cockpit, Express and MongoDB for authenticated portfolio operations, Socket.IO for real-time prices, and FastAPI/NumPy for quantitative analysis.
+> Educational paper-trading app only. StockBreakers does not provide financial advice and does not execute real trades.
 
-> Educational paper-trading app only. It does not provide financial advice or execute real trades.
+## Demo Access
 
-## Temporary Live Demo
+Docker app:
 
-Live app: https://listing-designed-prizes-sheets.trycloudflare.com
+```text
+http://localhost:3000
+```
 
 Demo login:
 
@@ -17,45 +19,117 @@ Email:    demo@stockbreakers.local
 Password: DemoPass123!
 ```
 
-This demo is served through a free Cloudflare quick tunnel, so the link works while the local Docker stack and tunnel process are running.
+Seed the demo account after the Docker stack is healthy:
 
-## Highlights
+```bash
+docker compose exec server npm run seed:demo
+```
 
-- JWT authenticated accounts with persisted portfolio state
-- Live simulated market stream over Socket.IO
-- Buy/sell workflows with cash-balance checks and holdings accounting
-- Watchlist, portfolio allocation, P&L, and transaction audit trail
-- FastAPI ML microservice with bootstrap Monte Carlo forecasts
-- Risk scoring from volatility, drawdown, and Sharpe-like metrics
-- Sentiment and trade suggestion endpoints with graceful fallbacks
-- Zod request validation across auth, trading, AI, and history APIs
-- Helmet, CORS allowlists, rate limiting, JSON size limits, and readiness checks
-- Dockerized React, Express, FastAPI, and MongoDB deployment path
-- Clean responsive UI with mobile navigation and production build support
+## Why This Project Stands Out
+
+- Full-stack trading simulator with real authentication, portfolio state, watchlists, order flow, and ledger history.
+- Microservice architecture using React, Express/MongoDB, Socket.IO, FastAPI/NumPy, and Docker Compose.
+- Backend-owned rolling price history, instead of browser-generated fake histories, powers ML and risk analytics.
+- Quant analytics include bootstrap Monte Carlo forecasts, reproducible model seeds, VaR 95, CVaR 95, downside probability, volatility, drawdown, and Sharpe-like metrics.
+- Secure, intentional trading UX with order review, max affordable/sellable quantity, buying-power usage, stale-price protection, and virtual-funds clarity.
+- Production hardening includes JWT auth, Zod validation, Helmet, CORS configuration, rate limiting, health/readiness probes, Dockerized services, and Nginx frontend hosting.
+
+## Core Features
+
+Trading workspace:
+
+- Real-time simulated market prices over Socket.IO
+- Market watch with searchable instruments and watchlist controls
+- Buy/sell order ticket with validation and confirmation flow
+- Virtual cash accounting and position-after-order visibility
+- Stale-price guard before confirming reviewed orders
+
+Portfolio and ledger:
+
+- Total equity, virtual cash, market value, and unrealized P&L
+- Holdings table with average cost, live value, and return %
+- Allocation chart and exposure breakdown
+- Transaction ledger with buy/sell notional, realized practice P&L, sell win rate, position-after-fill, and fill references
+
+Quant research:
+
+- Backend-maintained rolling price history per ticker
+- Bootstrap Monte Carlo forecast bands
+- Median, 5th percentile, 95th percentile, gain probability, VaR, CVaR, downside probability, volatility, drawdown, and Sharpe-like metrics
+- Simulated signal sentiment with transparent source labeling
+- Momentum and pullback screeners with rationale and score
 
 ## Architecture
 
 ```text
 Browser
-  |-- React + Vite trading UI
-  |-- Socket.IO live market stream
+  |-- React + Vite trading cockpit
+  |-- Zustand state management
+  |-- Recharts analytics visualizations
+  |-- Socket.IO client for live prices
   v
 Express API
   |-- Auth, trades, holdings, transactions, watchlist
+  |-- Backend rolling price history
   |-- Zod validation and security middleware
   |-- MongoDB persistence
   v
 FastAPI ML Service
-  |-- Monte Carlo forecast
-  |-- Sentiment, risk, suggestions
+  |-- Bootstrap Monte Carlo forecasts
+  |-- Risk metrics: VaR, CVaR, volatility, drawdown, downside probability
+  |-- Simulated signal sentiment and screeners
 ```
 
 ## Tech Stack
 
 - Frontend: React 18, Vite 8, Tailwind CSS, Zustand, Recharts, Lucide
-- Backend: Node 20+, Express, MongoDB, Mongoose, JWT, Socket.IO, Zod
+- Backend: Node.js 20+, Express, MongoDB, Mongoose, JWT, Socket.IO, Zod
 - ML service: FastAPI, Pydantic 2, NumPy, Uvicorn
-- Production: Docker Compose, Nginx static hosting, health/readiness probes
+- Production/runtime: Docker Compose, Nginx, health checks, readiness checks
+
+## ML Pipeline
+
+StockBreakers uses a deliberately transparent ML pipeline suitable for an educational simulator:
+
+1. The backend price engine maintains rolling simulated price history for every ticker.
+2. The Insights screen requests that history through `GET /api/ai/history/:ticker`.
+3. The Express API forwards validated analysis requests to the FastAPI ML service.
+4. FastAPI runs historical bootstrap Monte Carlo simulation using a deterministic seed.
+5. The response includes forecast bands, summary statistics, risk metrics, model metadata, and limitations.
+
+Risk outputs include:
+
+- Annualized volatility
+- Maximum drawdown
+- Sharpe-like ratio
+- VaR 95
+- CVaR 95
+- Downside probability
+- Gain probability
+- Median forecast and percentile forecast bands
+
+## Docker Compose
+
+Create a root `.env` from `.env.example` and set a strong `JWT_SECRET`:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Docker URLs:
+
+```text
+Client: http://localhost:3000
+API:    http://localhost:5000/api/health
+ML:     http://localhost:8000/health
+```
+
+Seed the demo user:
+
+```bash
+docker compose exec server npm run seed:demo
+```
 
 ## Local Development
 
@@ -67,7 +141,7 @@ cp client/.env.example client/.env
 cp ml-service/.env.example ml-service/.env
 ```
 
-Run the services in separate terminals:
+Run services in separate terminals:
 
 ```bash
 cd ml-service
@@ -87,43 +161,13 @@ npm install
 npm run dev
 ```
 
-Local URLs:
+Local dev URLs:
 
 ```text
 Client:     http://localhost:5173
 API:        http://localhost:5000/api/health
 API ready:  http://localhost:5000/api/ready
 ML docs:    http://localhost:8000/docs
-```
-
-## Docker Compose
-
-Create a root `.env` from `.env.example` and set a strong `JWT_SECRET`:
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-Docker URLs:
-
-```text
-Client: http://localhost:3000
-API:    http://localhost:5000/api/health
-ML:     http://localhost:8000/health
-```
-
-Seed the demo account after the stack is healthy:
-
-```bash
-docker compose exec server npm run seed:demo
-```
-
-Demo login:
-
-```text
-Email:    demo@stockbreakers.local
-Password: DemoPass123!
 ```
 
 ## Environment Variables
@@ -177,8 +221,9 @@ Market and portfolio:
 - `POST /api/watchlist/add`
 - `POST /api/watchlist/remove`
 
-AI:
+AI and research:
 
+- `GET /api/ai/history/:ticker`
 - `POST /api/ai/predict`
 - `POST /api/ai/sentiment`
 - `POST /api/ai/risk`
@@ -194,13 +239,12 @@ Ops:
 ## Quality Checks
 
 ```bash
-cd server
-npm run audit:prod
+cd client
+npm run build
 ```
 
 ```bash
-cd client
-npm run build
+cd server
 npm run audit:prod
 ```
 
@@ -211,16 +255,18 @@ python -m compileall main.py
 
 ## Resume Talking Points
 
-- Built a microservice architecture that separates real-time trading state from quantitative analysis.
-- Implemented WebSocket market streaming and synchronized live prices into a React/Zustand cockpit.
-- Hardened an Express API with CORS allowlists, rate limiting, structured validation, readiness probes, and Dockerized deployment.
-- Designed portfolio accounting flows for cash balance, average cost, realized trade history, and allocation visualizations.
-- Added a FastAPI ML service using bootstrap Monte Carlo simulation and risk metrics from volatility and drawdown.
+- Built a Dockerized microservice paper-trading platform using React, Express, MongoDB, Socket.IO, FastAPI, and NumPy.
+- Implemented real-time simulated market streaming with synchronized React/Zustand state for portfolio value, watchlists, order entry, and analytics views.
+- Designed authenticated trading workflows with virtual cash checks, max order sizing, stale-price protection, transaction ledger, realized practice P&L, and holdings accounting.
+- Developed a quantitative analytics service using backend-maintained rolling price history, bootstrap Monte Carlo forecasting, VaR/CVaR, downside probability, volatility, drawdown, and Sharpe-like metrics.
+- Hardened APIs with JWT auth, Zod validation, rate limiting, CORS allowlists, Helmet security headers, Docker health checks, and readiness probes.
+- Created a premium dark-mode trading dashboard with market watch, portfolio exposure, allocation charts, order ticket, transaction audit trail, and research analytics.
 
 ## Production Notes
 
 - Never commit real `.env` files or database credentials.
-- Rotate the sample secret before running in production.
-- Use managed MongoDB with network allowlisting and backups for hosted deployments.
+- Rotate sample secrets before any hosted deployment.
+- Use managed MongoDB with network allowlisting and backups for production.
 - Keep `CLIENT_URL` and `CORS_ORIGINS` restricted to real domains.
-- Use HTTPS and `TRUST_PROXY=true` when running behind a trusted reverse proxy.
+- Use HTTPS and `TRUST_PROXY=true` behind a trusted reverse proxy.
+- The market data and sentiment signals are simulated for education; do not present them as real financial predictions.

@@ -1,3 +1,4 @@
+import hashlib
 import os
 from typing import List, Optional
 
@@ -71,14 +72,20 @@ class RiskRequest(TickerModel):
 class StockItem(TickerModel):
     price: float = Field(..., gt=0)
     change: float
+    sector: Optional[str] = Field(default=None, max_length=80)
 
 
 class SuggestionRequest(BaseModel):
-    watchlist: List[str] = Field(default_factory=list)
-    stocks: List[StockItem] = Field(default_factory=list)
+    watchlist: List[str] = Field(default_factory=list, max_length=200)
+    stocks: List[StockItem] = Field(default_factory=list, max_length=200)
 
 
-def bootstrap_monte_carlo(prices: List[float], horizon: int, simulations: int):
+def stable_seed(*parts: object) -> int:
+    raw = "|".join(str(part) for part in parts).encode("utf-8")
+    return int.from_bytes(hashlib.sha256(raw).digest()[:8], "big") % (2**32)
+
+
+def bootstrap_monte_carlo(ticker: str, prices: List[float], horizon: int, simulations: int):
     prices_arr = np.asarray(prices, dtype=float)
     log_returns = np.diff(np.log(prices_arr))
 
@@ -86,7 +93,8 @@ def bootstrap_monte_carlo(prices: List[float], horizon: int, simulations: int):
         raise HTTPException(status_code=400, detail="Need at least 6 price points")
 
     s0 = prices_arr[-1]
-    rng = np.random.default_rng()
+    seed = stable_seed(ticker, len(prices_arr), round(float(s0), 4), horizon, simulations)
+    rng = np.random.default_rng(seed)
     paths = np.zeros((simulations, horizon + 1))
     paths[:, 0] = s0
 
@@ -94,9 +102,18 @@ def bootstrap_monte_carlo(prices: List[float], horizon: int, simulations: int):
     paths[:, 1:] = s0 * np.exp(np.cumsum(sampled, axis=1))
 
     finals = paths[:, -1]
+    final_returns = (finals - s0) / s0 * 100
+    var_95 = float(np.percentile(final_returns, 5))
+    tail_returns = final_returns[final_returns <= var_95]
+    cvar_95 = float(np.mean(tail_returns)) if len(tail_returns) else var_95
     prob_gain = float(np.mean(finals > s0))
     ann_vol = float(np.std(log_returns) * np.sqrt(252) * 100)
     ann_drift = float(np.mean(log_returns) * 252 * 100)
+    limitations = []
+    if len(prices_arr) < 60:
+        limitations.append("Short history window can make forecast bands unstable.")
+    if ann_vol < 1:
+        limitations.append("Very low observed volatility produces narrow forecast bands.")
 
     percentiles = {
         "p5": np.percentile(paths, 5, axis=0),
@@ -124,13 +141,22 @@ def bootstrap_monte_carlo(prices: List[float], horizon: int, simulations: int):
             "ann_volatility": round(ann_vol, 1),
             "ann_drift": round(ann_drift, 1),
             "expected_return": round(float((np.median(finals) - s0) / s0 * 100), 2),
+            "var_95": round(var_95, 2),
+            "cvar_95": round(cvar_95, 2),
+            "downside_probability": round(float(np.mean(finals < s0) * 100), 1),
+        },
+        "metadata": {
+            "model": "historical_bootstrap_monte_carlo",
+            "input_points": len(prices_arr),
+            "seed": seed,
+            "limitations": limitations,
         },
     }
 
 
 @app.post("/predict")
 def predict(req: PredictRequest):
-    result = bootstrap_monte_carlo(req.prices, req.horizon, req.simulations)
+    result = bootstrap_monte_carlo(req.ticker, req.prices, req.horizon, req.simulations)
     result["ticker"] = req.ticker
     return result
 
@@ -156,19 +182,19 @@ def sentiment(req: SentimentRequest):
 
     headlines = {
         "bullish": [
-            f"{req.ticker} breaks resistance as analysts raise targets",
-            f"Strong earnings momentum lifts {req.ticker} sentiment",
-            f"Institutional buying interest detected in {req.ticker}",
+            f"{req.ticker} simulated tape shows positive momentum pressure",
+            f"{req.ticker} signal score is above neutral in this run",
+            f"{req.ticker} risk context should still be checked before sizing",
         ],
         "bearish": [
-            f"{req.ticker} faces headwinds amid macro uncertainty",
-            f"Profit-taking pressures {req.ticker} near recent highs",
-            f"Options market signals caution on {req.ticker}",
+            f"{req.ticker} simulated tape shows downside pressure",
+            f"{req.ticker} signal score is below neutral in this run",
+            f"{req.ticker} may need tighter sizing or a smaller paper entry",
         ],
         "neutral": [
-            f"{req.ticker} consolidates ahead of earnings",
-            f"Mixed signals keep {req.ticker} near key levels",
-            f"Analysts remain divided on {req.ticker} near-term outlook",
+            f"{req.ticker} simulated tape is near neutral",
+            f"{req.ticker} has no strong directional signal in this run",
+            f"{req.ticker} forecast bands may matter more than sentiment here",
         ],
     }
 
@@ -179,6 +205,7 @@ def sentiment(req: SentimentRequest):
         "score": round(score, 3),
         "confidence": round(abs(score) * 0.4 + 0.5, 2),
         "headlines": headlines[label],
+        "source": "simulated_market_signal",
     }
 
 
@@ -193,8 +220,13 @@ def risk(req: RiskRequest):
     drawdown = (prices - rolling_max) / rolling_max
     max_dd = abs(float(np.min(drawdown)))
     sharpe = 0.0 if volatility == 0 else float(np.mean(log_ret) / volatility * np.sqrt(252))
+    returns_pct = (np.exp(log_ret) - 1) * 100
+    var_95 = float(np.percentile(returns_pct, 5))
+    tail_returns = returns_pct[returns_pct <= var_95]
+    cvar_95 = float(np.mean(tail_returns)) if len(tail_returns) else var_95
+    downside_probability = float(np.mean(returns_pct < 0) * 100)
 
-    raw_score = ann_vol * 100 * 0.6 + max_dd * 100 * 0.4
+    raw_score = ann_vol * 100 * 0.45 + max_dd * 100 * 0.35 + downside_probability * 0.2
     score = int(min(max(raw_score, 5), 95))
 
     if score < 30:
@@ -213,6 +245,9 @@ def risk(req: RiskRequest):
             "ann_volatility": round(ann_vol * 100, 1),
             "max_drawdown": round(max_dd * 100, 1),
             "sharpe": round(sharpe, 2),
+            "var_95": round(var_95, 2),
+            "cvar_95": round(cvar_95, 2),
+            "downside_probability": round(downside_probability, 1),
         },
     }
 
@@ -226,11 +261,23 @@ def suggestions(req: SuggestionRequest):
 
     return {
         "trending_up": [
-            {"ticker": stock.ticker, "price": stock.price, "change": stock.change}
+            {
+                "ticker": stock.ticker,
+                "price": stock.price,
+                "change": stock.change,
+                "score": round(min(stock.change * 20, 100), 1),
+                "rationale": "Positive short-term simulated tape with watchlist exclusion.",
+            }
             for stock in movers_up
         ],
         "dip_buys": [
-            {"ticker": stock.ticker, "price": stock.price, "change": stock.change}
+            {
+                "ticker": stock.ticker,
+                "price": stock.price,
+                "change": stock.change,
+                "score": round(min(abs(stock.change) * 18, 100), 1),
+                "rationale": "Negative move flagged for paper-trade pullback review, not a buy recommendation.",
+            }
             for stock in movers_down
         ],
     }

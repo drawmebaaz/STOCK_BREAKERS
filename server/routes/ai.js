@@ -6,15 +6,34 @@ import {
   predictionSchema,
   riskSchema,
   sentimentSchema,
+  tickerSchema,
   validateBody,
 } from "../middleware/validation.js";
-import { getLivePrices } from "../utils/priceStore.js";
+import { getLivePrices, getPriceHistory } from "../utils/priceStore.js";
 
 const router = Router();
 const ml = axios.create({
   baseURL: env.ML_SERVICE_URL,
   timeout: 7000,
   maxContentLength: 1024 * 1024,
+});
+
+router.get("/history/:ticker", protect, (req, res) => {
+  const result = tickerSchema.safeParse(req.params.ticker);
+  if (!result.success) return res.status(400).json({ error: "Invalid ticker" });
+
+  const stock = getLivePrices().find((item) => item.ticker === result.data);
+  const prices = getPriceHistory(result.data, 120);
+  if (!stock || !prices) return res.status(404).json({ error: "Stock history not found" });
+
+  res.json({
+    ticker: result.data,
+    prices,
+    points: prices.length,
+    currentPrice: stock.price,
+    source: "server-simulated-price-engine",
+    note: "Rolling simulated market history maintained by the backend price engine.",
+  });
 });
 
 router.post("/predict", protect, validateBody(predictionSchema), async (req, res) => {
@@ -49,7 +68,12 @@ router.get("/suggestions", protect, async (req, res) => {
     const stocks = getLivePrices();
     const { data } = await ml.post("/suggestions", {
       watchlist: req.user.watchlist || [],
-      stocks: stocks.map((s) => ({ ticker: s.ticker, price: s.price, change: s.change })),
+      stocks: stocks.map((s) => ({
+        ticker: s.ticker,
+        price: s.price,
+        change: s.change,
+        sector: s.sector,
+      })),
     });
     res.json(data);
   } catch {

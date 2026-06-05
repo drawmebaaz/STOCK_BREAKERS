@@ -17,6 +17,44 @@ export const MOCK_STOCKS = [
 ];
 
 let livePrices = MOCK_STOCKS.map((stock) => ({ ...stock }));
+const HISTORY_LIMIT = 240;
+
+const hashTicker = (ticker) =>
+  ticker.split("").reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) >>> 0, 2166136261);
+
+const seededRandom = (seed) => {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6D2B79F5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+const generateInitialHistory = (stock, points = 90) => {
+  const rng = seededRandom(hashTicker(stock.ticker));
+  const sectorBias = stock.sector === "Technology" ? 0.0008 : stock.sector === "Finance" ? 0.00035 : 0.00015;
+  const volatility = stock.price > 500 ? 0.018 : stock.price < 50 ? 0.024 : 0.014;
+  let price = stock.price * (0.92 + rng() * 0.16);
+  const prices = [];
+
+  for (let index = 0; index < points; index += 1) {
+    const cycle = Math.sin(index / 8 + rng() * 0.2) * 0.003;
+    const shock = (rng() - 0.5) * volatility;
+    price = Math.max(1, price * (1 + sectorBias + cycle + shock));
+    prices.push(+price.toFixed(2));
+  }
+
+  const scale = stock.price / prices.at(-1);
+  return prices.map((value, index) => (index === prices.length - 1 ? stock.price : +(value * scale).toFixed(2)));
+};
+
+let priceHistory = MOCK_STOCKS.reduce((history, stock) => {
+  history[stock.ticker] = generateInitialHistory(stock);
+  return history;
+}, {});
 
 export const getLivePrices = () => livePrices;
 
@@ -25,9 +63,17 @@ export const updatePrices = () => {
     const drift = (Math.random() - 0.48) * 0.018;
     const newPrice = +(stock.price * (1 + drift)).toFixed(2);
     const change = +(((newPrice - stock.price) / stock.price) * 100).toFixed(2);
+    const history = priceHistory[stock.ticker] || [stock.price];
+    priceHistory[stock.ticker] = [...history, newPrice].slice(-HISTORY_LIMIT);
     return { ...stock, price: newPrice, change };
   });
   return livePrices;
+};
+
+export const getPriceHistory = (ticker, limit = 120) => {
+  const history = priceHistory[ticker];
+  if (!history) return null;
+  return history.slice(-Math.min(Math.max(limit, 10), HISTORY_LIMIT));
 };
 
 export const getPriceMap = () =>

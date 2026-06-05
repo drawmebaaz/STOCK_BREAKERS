@@ -15,9 +15,6 @@ import { usePriceStore } from "../stores/index.js";
 import { api } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
 
-const HISTORY_LEN = 60;
-const fmt2 = (n) => Number(n ?? 0).toFixed(2);
-
 function StatCard({ label, value, sub, tone = "neutral" }) {
   const toneClass = {
     positive: "text-emerald-300",
@@ -74,7 +71,7 @@ function RiskMeter({ score, label, color }) {
   );
 }
 
-function SentimentPanel({ sentiment, confidence, headlines }) {
+function SentimentPanel({ sentiment, confidence, headlines, source }) {
   const cfg = {
     bullish: { badge: "badge-up", label: "Bullish" },
     bearish: { badge: "badge-down", label: "Bearish" },
@@ -85,8 +82,10 @@ function SentimentPanel({ sentiment, confidence, headlines }) {
     <div className="panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="section-title">News Sentiment</h2>
-          <p className="section-subtitle mt-1">Confidence-weighted market tone.</p>
+          <h2 className="section-title">Signal Sentiment</h2>
+          <p className="section-subtitle mt-1">
+            Confidence-weighted simulated tape signal{source ? ` from ${source.replaceAll("_", " ")}` : ""}.
+          </p>
         </div>
         <span className={cfg.badge}>{cfg.label} {Math.round((confidence ?? 0) * 100)}%</span>
       </div>
@@ -100,7 +99,7 @@ function SentimentPanel({ sentiment, confidence, headlines }) {
           ))}
         </div>
       ) : (
-        <p className="mt-4 text-sm text-slate-500">No recent headline sample was returned for this run.</p>
+        <p className="mt-4 text-sm text-slate-500">No signal notes were returned for this run.</p>
       )}
     </div>
   );
@@ -154,18 +153,26 @@ function SuggestionsPanel({ suggestions, priceMap, onTrade }) {
                     <button
                       key={`${group.title}-${item.ticker}`}
                       onClick={() => onTrade(item.ticker)}
-                      className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-colors hover:bg-slate-900"
+                      className="w-full px-3 py-3 text-left transition-colors hover:bg-slate-900"
                     >
-                      <span>
-                        <span className="ticker-chip">{item.ticker}</span>
-                        <span className={isUp ? "ml-2 badge-up" : "ml-2 badge-down"}>
-                          {signedPercent(item.change)}
+                      <span className="flex items-center justify-between gap-3">
+                        <span>
+                          <span className="ticker-chip">{item.ticker}</span>
+                          <span className={isUp ? "ml-2 badge-up" : "ml-2 badge-down"}>
+                            {signedPercent(item.change)}
+                          </span>
+                        </span>
+                        <span className="flex items-center gap-3">
+                          <span className="text-right">
+                            <span className="mono block text-sm text-slate-100">{currency(live)}</span>
+                            {item.score !== undefined && <span className="block text-xs text-slate-500">Score {item.score}</span>}
+                          </span>
+                          <ArrowUpRight size={15} className="text-slate-500" />
                         </span>
                       </span>
-                      <span className="flex items-center gap-3">
-                        <span className="mono text-sm text-slate-100">{currency(live)}</span>
-                        <ArrowUpRight size={15} className="text-slate-500" />
-                      </span>
+                      {item.rationale && (
+                        <span className="mt-2 block text-xs leading-5 text-slate-500">{item.rationale}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -198,16 +205,6 @@ function buildChartData(historicalPrices, forecast) {
     { day: 0, historical: historicalPrices.at(-1), p50: historicalPrices.at(-1) },
     ...future,
   ];
-}
-
-function syntheticHistory(currentPrice, len = HISTORY_LEN) {
-  const prices = [currentPrice];
-  for (let i = 1; i < len; i++) {
-    const previous = prices[0];
-    const drift = (Math.random() - 0.48) * 0.015;
-    prices.unshift(+(previous / (1 + drift)).toFixed(2));
-  }
-  return prices;
 }
 
 export default function InsightsPage() {
@@ -253,21 +250,16 @@ export default function InsightsPage() {
     setLoading(true);
     setError("");
     setResult(null);
-    const prices = syntheticHistory(price, HISTORY_LEN);
 
     try {
+      const { data: history } = await api.get(`/ai/history/${ticker}`);
+      const prices = history.prices;
       const [predRes, sentRes, riskRes] = await Promise.all([
         api.post("/ai/predict", { ticker, prices, horizon, simulations: sims }),
         api.post("/ai/sentiment", { ticker }),
         api.post("/ai/risk", { ticker, prices }),
       ]);
-      setResult({ predict: predRes.data, sentiment: sentRes.data, risk: riskRes.data, prices });
-      window.localStorage.setItem("stockbreakers-last-analysis", JSON.stringify({
-        ticker,
-        horizon,
-        simulations: sims,
-        ranAt: new Date().toISOString(),
-      }));
+      setResult({ predict: predRes.data, sentiment: sentRes.data, risk: riskRes.data, prices, history });
       api.get("/ai/suggestions").then(({ data }) => setSuggestions(data)).catch(() => {});
     } catch (err) {
       setError(err.response?.data?.error || "Research service is unavailable. Check the ML service and try again.");
@@ -278,7 +270,8 @@ export default function InsightsPage() {
 
   const chartData = result ? buildChartData(result.prices, result.predict.forecast) : [];
   const stats = result?.predict?.stats;
-  const medianMove = result && livePrice ? ((stats?.median_final - livePrice) / livePrice) * 100 : 0;
+  const analysisPrice = result?.prices?.at(-1) ?? livePrice;
+  const medianMove = result && analysisPrice ? ((stats?.median_final - analysisPrice) / analysisPrice) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -336,7 +329,7 @@ export default function InsightsPage() {
         <div className="panel">
           <div className="empty-state min-h-64">
             <p>Choose an instrument and run an analysis to populate the forecast panel.</p>
-            <p className="text-xs">The simulator uses bootstrap resampling of generated historical paths for educational comparison.</p>
+            <p className="text-xs">The simulator uses backend-maintained price history with bootstrap resampling for educational comparison.</p>
           </div>
         </div>
       )}
@@ -345,7 +338,7 @@ export default function InsightsPage() {
         <div className="panel p-6">
           <div className="flex items-center gap-3 text-sm text-slate-400">
             <RefreshCw size={16} className="animate-spin" />
-            Running {sims} simulations for {ticker}.
+            Loading backend history and running {sims} simulations for {ticker}.
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <div className="skeleton h-20" />
@@ -379,7 +372,9 @@ export default function InsightsPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="section-title">{ticker} Monte Carlo Bands</h2>
-                <p className="section-subtitle mt-1">{horizon}-day horizon across {sims} simulated paths.</p>
+                <p className="section-subtitle mt-1">
+                  {horizon}-day horizon across {sims} paths using {result.history?.points || result.prices.length} backend price points.
+                </p>
               </div>
               <div className="flex flex-wrap gap-3 text-xs text-slate-500">
                 <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#7aa7d9]" />Historical</span>
@@ -439,15 +434,24 @@ export default function InsightsPage() {
                 </div>
                 <span className="badge-neutral">Bootstrap model</span>
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                 {[
                   { label: "Annual volatility", value: `${result.risk.metrics.ann_volatility}%`, tone: "warning" },
                   { label: "Max drawdown", value: `${result.risk.metrics.max_drawdown}%`, tone: "negative" },
                   { label: "Sharpe ratio", value: result.risk.metrics.sharpe, tone: "info" },
+                  { label: "Daily VaR 95", value: `${result.risk.metrics.var_95 ?? 0}%`, tone: "negative" },
+                  { label: "Daily CVaR 95", value: `${result.risk.metrics.cvar_95 ?? 0}%`, tone: "negative" },
+                  { label: "Down days", value: `${result.risk.metrics.downside_probability ?? 0}%`, tone: "warning" },
                 ].map((item) => (
                   <StatCard key={item.label} label={item.label} value={item.value} tone={item.tone} />
                 ))}
               </div>
+              {result.predict.metadata && (
+                <p className="mt-4 text-xs text-slate-600">
+                  Model: {result.predict.metadata.model}; input points: {result.predict.metadata.input_points};
+                  reproducible seed: {result.predict.metadata.seed}.
+                </p>
+              )}
             </div>
           )}
         </>

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Star } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, Search, Star } from "lucide-react";
 import { useAuthStore, usePriceStore, usePortfolioStore } from "../stores/index.js";
 import { usePortfolio } from "../hooks/index.js";
 import { api, apiErrorMessage } from "../utils/api.js";
@@ -63,14 +63,97 @@ function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
   );
 }
 
+function PracticePath({ watchlistCount, holdingCount, transactionCount, hasAnalysis, onNavigate }) {
+  const steps = [
+    {
+      label: "Build a watchlist",
+      detail: "Star at least three instruments to create a focused practice universe.",
+      done: watchlistCount >= 3,
+      action: "Review market",
+      target: "/",
+    },
+    {
+      label: "Place a small order",
+      detail: "Use the trade ticket with a manageable quantity before scaling up.",
+      done: transactionCount > 0,
+      action: "Trade",
+      target: "/trade",
+    },
+    {
+      label: "Run a risk check",
+      detail: "Compare forecast bands, sentiment, and drawdown before the next order.",
+      done: hasAnalysis,
+      action: "Research",
+      target: "/insights",
+    },
+    {
+      label: "Review the ledger",
+      detail: "Study fills and realized practice P&L after each session.",
+      done: holdingCount > 0 && transactionCount > 0,
+      action: "Ledger",
+      target: "/transactions",
+    },
+  ];
+  const completed = steps.filter((step) => step.done).length;
+
+  return (
+    <div className="panel p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="section-title">Practice Path</h2>
+          <p className="section-subtitle mt-1">A beginner-safe loop for using the simulator.</p>
+        </div>
+        <span className="badge-neutral">{completed}/{steps.length}</span>
+      </div>
+      <div className="mt-4 h-1.5 rounded-full bg-slate-900">
+        <div
+          className="h-full rounded-full bg-slate-200"
+          style={{ width: `${(completed / steps.length) * 100}%` }}
+        />
+      </div>
+      <div className="mt-4 space-y-3">
+        {steps.map((step) => (
+          <div key={step.label} className="rounded-md border border-slate-800 bg-slate-950/50 p-3">
+            <div className="flex items-start gap-3">
+              {step.done ? (
+                <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-emerald-300" />
+              ) : (
+                <Circle size={17} className="mt-0.5 shrink-0 text-slate-600" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-200">{step.label}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{step.detail}</p>
+                {!step.done && (
+                  <button
+                    onClick={() => onNavigate(step.target)}
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-slate-300 hover:text-white"
+                  >
+                    {step.action}
+                    <ArrowRight size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const stocks = usePriceStore((s) => s.stocks);
   const summary = usePortfolioStore((s) => s.summary);
+  const holdings = usePortfolioStore((s) => s.holdings);
   const user = useAuthStore((s) => s.user);
   const updateWatchlist = useAuthStore((s) => s.updateWatchlist);
   const [watchlist, setWatchlist] = useState(user?.watchlist || []);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const [transactionCount, setTransactionCount] = useState(0);
+  const [hasAnalysis] = useState(() =>
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem("stockbreakers-last-analysis"))
+  );
   const navigate = useNavigate();
   usePortfolio();
 
@@ -81,6 +164,12 @@ export default function DashboardPage() {
       updateWatchlist(nextWatchlist);
     }).catch(() => {});
   }, [updateWatchlist]);
+
+  useEffect(() => {
+    api.get("/transactions?limit=1")
+      .then(({ data }) => setTransactionCount(data.transactions?.length || 0))
+      .catch(() => setTransactionCount(0));
+  }, []);
 
   const toggleWatch = async (ticker) => {
     const inList = watchlist.includes(ticker);
@@ -197,6 +286,14 @@ export default function DashboardPage() {
         </div>
 
         <aside className="space-y-4">
+          <PracticePath
+            watchlistCount={watchlist.length}
+            holdingCount={holdings.length}
+            transactionCount={transactionCount}
+            hasAnalysis={hasAnalysis}
+            onNavigate={navigate}
+          />
+
           <div className="panel p-4">
             <h2 className="section-title">Market Breadth</h2>
             <div className="mt-4 grid grid-cols-2 gap-3">

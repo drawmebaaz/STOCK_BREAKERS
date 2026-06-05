@@ -262,6 +262,12 @@ export default function InsightsPage() {
         api.post("/ai/risk", { ticker, prices }),
       ]);
       setResult({ predict: predRes.data, sentiment: sentRes.data, risk: riskRes.data, prices });
+      window.localStorage.setItem("stockbreakers-last-analysis", JSON.stringify({
+        ticker,
+        horizon,
+        simulations: sims,
+        ranAt: new Date().toISOString(),
+      }));
       api.get("/ai/suggestions").then(({ data }) => setSuggestions(data)).catch(() => {});
     } catch (err) {
       setError(err.response?.data?.error || "Research service is unavailable. Check the ML service and try again.");

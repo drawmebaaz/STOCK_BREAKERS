@@ -29,7 +29,7 @@ export default function TransactionsPage() {
     setLoading(true);
     setError("");
     try {
-      const { data } = await api.get("/transactions");
+      const { data } = await api.get("/transactions?limit=200");
       setTransactions(data.transactions || []);
     } catch (err) {
       setError(apiErrorMessage(err, "Could not load transactions"));
@@ -42,19 +42,68 @@ export default function TransactionsPage() {
     loadTransactions();
   }, [loadTransactions]);
 
+  const enrichedTransactions = useMemo(() => {
+    const positions = new Map();
+    const detailsById = new Map();
+    const chronological = [...transactions].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    chronological.forEach((transaction) => {
+      const current = positions.get(transaction.ticker) || { quantity: 0, costBasis: 0 };
+
+      if (transaction.type === "buy") {
+        const next = {
+          quantity: current.quantity + transaction.quantity,
+          costBasis: +(current.costBasis + transaction.total).toFixed(2),
+        };
+        positions.set(transaction.ticker, next);
+        detailsById.set(transaction._id, {
+          realizedPnl: null,
+          avgCostBefore: null,
+          positionAfter: next.quantity,
+        });
+        return;
+      }
+
+      const avgCost = current.quantity > 0 ? current.costBasis / current.quantity : transaction.price;
+      const matchedQty = Math.min(transaction.quantity, current.quantity);
+      const realizedPnl = +((transaction.price - avgCost) * matchedQty).toFixed(2);
+      const nextQty = Math.max(0, current.quantity - transaction.quantity);
+      const nextCostBasis = nextQty > 0 ? +(current.costBasis - avgCost * matchedQty).toFixed(2) : 0;
+
+      positions.set(transaction.ticker, { quantity: nextQty, costBasis: nextCostBasis });
+      detailsById.set(transaction._id, {
+        realizedPnl,
+        avgCostBefore: +avgCost.toFixed(4),
+        positionAfter: nextQty,
+      });
+    });
+
+    return transactions.map((transaction) => ({
+      ...transaction,
+      ...(detailsById.get(transaction._id) || {}),
+    }));
+  }, [transactions]);
+
   const filtered = useMemo(
-    () => (filter === "all" ? transactions : transactions.filter((transaction) => transaction.type === filter)),
-    [filter, transactions]
+    () => (filter === "all"
+      ? enrichedTransactions
+      : enrichedTransactions.filter((transaction) => transaction.type === filter)),
+    [enrichedTransactions, filter]
   );
 
-  const totalBought = transactions
+  const totalBought = enrichedTransactions
     .filter((transaction) => transaction.type === "buy")
     .reduce((sum, transaction) => sum + transaction.total, 0);
-  const totalSold = transactions
+  const totalSold = enrichedTransactions
     .filter((transaction) => transaction.type === "sell")
     .reduce((sum, transaction) => sum + transaction.total, 0);
-  const netCash = totalSold - totalBought;
-  const lastTrade = transactions[0]?.createdAt;
+  const sells = enrichedTransactions.filter((transaction) => transaction.type === "sell");
+  const realizedPnl = sells.reduce((sum, transaction) => sum + Number(transaction.realizedPnl || 0), 0);
+  const winningSells = sells.filter((transaction) => Number(transaction.realizedPnl || 0) > 0).length;
+  const sellWinRate = sells.length > 0 ? (winningSells / sells.length) * 100 : 0;
+  const lastTrade = enrichedTransactions[0]?.createdAt;
 
   return (
     <div className="space-y-6">
@@ -70,15 +119,21 @@ export default function TransactionsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Metric label="Total orders" value={transactions.length} />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+        <Metric label="Total orders" value={enrichedTransactions.length} />
         <Metric label="Buy notional" value={currency(totalBought)} tone="negative" />
         <Metric label="Sell notional" value={currency(totalSold)} tone="positive" />
         <Metric
-          label="Net cash flow"
-          value={`${netCash >= 0 ? "+" : ""}${currency(netCash)}`}
+          label="Realized P&L"
+          value={`${realizedPnl >= 0 ? "+" : ""}${currency(realizedPnl)}`}
+          sub={sells.length > 0 ? `${sells.length} closed sell orders` : "No sells yet"}
+          tone={realizedPnl >= 0 ? "positive" : "negative"}
+        />
+        <Metric
+          label="Sell win rate"
+          value={`${sellWinRate.toFixed(0)}%`}
           sub={lastTrade ? new Date(lastTrade).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "No fills yet"}
-          tone={netCash >= 0 ? "positive" : "negative"}
+          tone={sellWinRate >= 50 ? "positive" : "neutral"}
         />
       </div>
 
@@ -88,7 +143,9 @@ export default function TransactionsPage() {
         <div className="flex flex-col gap-3 border-b border-slate-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="section-title">Order History</h2>
-            <p className="section-subtitle mt-1">{filtered.length} rows in current view.</p>
+            <p className="section-subtitle mt-1">
+              {filtered.length} rows in current view. Realized P&L is reconstructed from the latest 200 fills.
+            </p>
           </div>
           <div className="inline-flex rounded-md border border-slate-800 bg-slate-950/60 p-1">
             {[
@@ -127,6 +184,8 @@ export default function TransactionsPage() {
                   <th className="text-right">Quantity</th>
                   <th className="text-right">Fill Price</th>
                   <th className="text-right">Notional</th>
+                  <th className="text-right">Realized P&L</th>
+                  <th className="text-right">After</th>
                   <th>Timestamp</th>
                   <th>Reference</th>
                 </tr>
@@ -148,6 +207,18 @@ export default function TransactionsPage() {
                       <span className={transaction.type === "buy" ? "text-red-300" : "text-emerald-300"}>
                         {transaction.type === "buy" ? "-" : "+"}{currency(transaction.total)}
                       </span>
+                    </td>
+                    <td className="text-right mono">
+                      {transaction.type === "sell" && transaction.realizedPnl !== null && transaction.realizedPnl !== undefined ? (
+                        <span className={transaction.realizedPnl >= 0 ? "text-emerald-300" : "text-red-300"}>
+                          {transaction.realizedPnl >= 0 ? "+" : ""}{currency(transaction.realizedPnl)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">--</span>
+                      )}
+                    </td>
+                    <td className="text-right mono text-slate-500">
+                      {transaction.positionAfter ?? "--"}
                     </td>
                     <td className="text-slate-500">
                       {new Date(transaction.createdAt).toLocaleString("en-IN", {

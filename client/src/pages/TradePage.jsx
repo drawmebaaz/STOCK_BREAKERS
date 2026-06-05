@@ -19,19 +19,34 @@ export default function TradePage() {
   const [loading, setLoading] = useState(false);
   const [holding, setHolding] = useState(null);
   const [reviewing, setReviewing] = useState(false);
+  const [reviewSnapshot, setReviewSnapshot] = useState(null);
 
   const stock = stocks.find((item) => item.ticker === ticker);
   const price = priceMap[ticker] ?? stock?.price ?? 0;
   const total = useMemo(() => +(price * qty).toFixed(2), [price, qty]);
+  const cashBalance = Number(user?.cashBalance ?? 0);
   const estimatedCash = mode === "buy"
-    ? Number(user?.cashBalance ?? 0) - total
-    : Number(user?.cashBalance ?? 0) + total;
+    ? cashBalance - total
+    : cashBalance + total;
   const sellCapacity = holding?.quantity || 0;
+  const maxBuyQty = price > 0 ? Math.min(10000, Math.floor(cashBalance / price)) : 0;
+  const maxOrderQty = mode === "buy" ? maxBuyQty : sellCapacity;
+  const positionAfter = mode === "buy" ? sellCapacity + qty : Math.max(sellCapacity - qty, 0);
+  const cashUsagePct = mode === "buy" && cashBalance > 0 ? (total / cashBalance) * 100 : 0;
+  const reviewDriftPct = reviewSnapshot?.price
+    ? Math.abs((price - reviewSnapshot.price) / reviewSnapshot.price) * 100
+    : 0;
   const validation =
     mode === "buy" && estimatedCash < 0
       ? "Insufficient virtual cash for this order."
       : mode === "sell" && qty > sellCapacity
         ? "Quantity exceeds shares currently held."
+        : "";
+  const orderHint =
+    !validation && mode === "buy" && cashUsagePct > 25
+      ? `This order uses ${cashUsagePct.toFixed(1)}% of available virtual cash. Consider a smaller practice size if you are testing a new idea.`
+      : !validation && mode === "sell" && qty === sellCapacity && sellCapacity > 0
+        ? "This order exits the full simulated position."
         : "";
 
   useEffect(() => {
@@ -48,18 +63,53 @@ export default function TradePage() {
 
   useEffect(() => {
     setReviewing(false);
+    setReviewSnapshot(null);
+  }, [ticker, mode, qty]);
+
+  useEffect(() => {
     if (!ticker) return;
     api.get("/portfolio").then(({ data }) => {
       const nextHolding = data.holdings.find((item) => item.ticker === ticker);
       setHolding(nextHolding || null);
     }).catch(() => setHolding(null));
-  }, [ticker, mode, qty]);
+  }, [ticker]);
+
+  const setSafeQuantity = (value) => {
+    const next = Math.max(1, Math.min(10000, parseInt(value, 10) || 1));
+    setQty(next);
+    setStatus(null);
+  };
+
+  const quantityPresets = mode === "buy"
+    ? [
+        { label: "1", value: 1 },
+        { label: "5", value: 5 },
+        { label: "10", value: 10 },
+        { label: "25% cash", value: Math.max(1, Math.floor(maxBuyQty * 0.25)) },
+        { label: "Max", value: maxBuyQty },
+      ]
+    : [
+        { label: "1", value: 1 },
+        { label: "Half", value: Math.max(1, Math.floor(sellCapacity * 0.5)) },
+        { label: "Max", value: sellCapacity },
+      ];
 
   const execute = async () => {
     if (qty <= 0 || !price || validation) return;
     if (!reviewing) {
+      setReviewSnapshot({ ticker, mode, qty, price, total, createdAt: Date.now() });
       setReviewing(true);
       setStatus(null);
+      return;
+    }
+
+    if (reviewSnapshot && reviewDriftPct > 0.5) {
+      setReviewing(false);
+      setReviewSnapshot(null);
+      setStatus({
+        ok: false,
+        msg: `The simulated price moved ${reviewDriftPct.toFixed(2)}% after review. Review the updated order before confirming.`,
+      });
       return;
     }
 
@@ -73,6 +123,7 @@ export default function TradePage() {
         msg: `${mode === "buy" ? "Bought" : "Sold"} ${qty} ${ticker} at ${currency(price)}`,
       });
       setReviewing(false);
+      setReviewSnapshot(null);
 
       const { data: portfolio } = await api.get("/portfolio");
       setHolding(portfolio.holdings.find((item) => item.ticker === ticker) || null);
@@ -182,19 +233,45 @@ export default function TradePage() {
                   min="1"
                   max="10000"
                   value={qty}
-                  onChange={(event) => {
-                    setQty(Math.max(1, parseInt(event.target.value, 10) || 1));
-                    setReviewing(false);
-                  }}
+                  onChange={(event) => setSafeQuantity(event.target.value)}
                   className="input mono"
                 />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {quantityPresets.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      disabled={preset.value < 1}
+                      onClick={() => setSafeQuantity(preset.value)}
+                      className="rounded border border-slate-800 bg-slate-950/60 px-2.5 py-1 text-xs font-medium text-slate-400 transition-colors hover:border-slate-700 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  {mode === "buy"
+                    ? `Max affordable: ${maxBuyQty} shares at current mark.`
+                    : `Available to sell: ${sellCapacity} shares.`}
+                </p>
               </div>
 
               {validation && <div className="alert-error">{validation}</div>}
 
+              {orderHint && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  {orderHint}
+                </div>
+              )}
+
               {reviewing && !validation && (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
                   Review this simulated {mode} order before confirming. No real money is used.
+                  {reviewDriftPct > 0.25 && (
+                    <span className="mt-2 block text-xs text-amber-200">
+                      Current mark has moved {reviewDriftPct.toFixed(2)}% since review.
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -231,7 +308,7 @@ export default function TradePage() {
                 </div>
                 <div className="flex justify-between gap-4 pt-2">
                   <span className="text-slate-500">Cash before</span>
-                  <span className="mono text-slate-300">{currency(user?.cashBalance)}</span>
+                  <span className="mono text-slate-300">{currency(cashBalance)}</span>
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-slate-500">Cash after</span>
@@ -239,6 +316,24 @@ export default function TradePage() {
                     {currency(estimatedCash)}
                   </span>
                 </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Position after</span>
+                  <span className="mono text-slate-300">{positionAfter} shares</span>
+                </div>
+                {mode === "buy" && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-500">Buying power used</span>
+                    <span className={cashUsagePct > 25 ? "mono text-amber-300" : "mono text-slate-300"}>
+                      {cashUsagePct.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                {reviewSnapshot && (
+                  <div className="flex justify-between gap-4 border-t border-slate-800 pt-3">
+                    <span className="text-slate-500">Reviewed mark</span>
+                    <span className="mono text-slate-300">{currency(reviewSnapshot.price)}</span>
+                  </div>
+                )}
               </div>
 
               {holding && (

@@ -59,6 +59,26 @@ Quant research:
 - Simulated signal sentiment with transparent source labeling
 - Momentum and pullback screeners with rationale and score
 
+## Screenshots
+
+| Portfolio overview | Trade desk |
+| --- | --- |
+| ![Portfolio overview](docs/screenshots/dashboard.png) | ![Trade desk](docs/screenshots/trade-desk.png) |
+
+| Portfolio exposure | Research controls |
+| --- | --- |
+| ![Portfolio exposure](docs/screenshots/portfolio.png) | ![Research controls](docs/screenshots/insights.png) |
+
+| Monte Carlo forecast | Transaction ledger |
+| --- | --- |
+| ![Monte Carlo forecast](docs/screenshots/insights-forecast.png) | ![Transaction ledger](docs/screenshots/transactions.png) |
+
+## Development Write-Up
+
+I documented the major problems faced while building StockBreakers and how each one was solved:
+
+[Building StockBreakers: Problems Faced and How I Solved Them](docs/development-problems-and-solutions.md)
+
 ## Architecture
 
 ```text
@@ -252,15 +272,6 @@ npm run audit:prod
 cd ml-service
 python -m compileall main.py
 ```
-
-## Resume Talking Points
-
-- Built a Dockerized microservice paper-trading platform using React, Express, MongoDB, Socket.IO, FastAPI, and NumPy.
-- Implemented real-time simulated market streaming with synchronized React/Zustand state for portfolio value, watchlists, order entry, and analytics views.
-- Designed authenticated trading workflows with virtual cash checks, max order sizing, stale-price protection, transaction ledger, realized practice P&L, and holdings accounting.
-- Developed a quantitative analytics service using backend-maintained rolling price history, bootstrap Monte Carlo forecasting, VaR/CVaR, downside probability, volatility, drawdown, and Sharpe-like metrics.
-- Hardened APIs with JWT auth, Zod validation, rate limiting, CORS allowlists, Helmet security headers, Docker health checks, and readiness probes.
-- Created a premium dark-mode trading dashboard with market watch, portfolio exposure, allocation charts, order ticket, transaction audit trail, and research analytics.
 
 ## Production Notes
 

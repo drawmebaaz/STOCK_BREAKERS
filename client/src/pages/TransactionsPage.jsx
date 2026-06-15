@@ -157,7 +157,7 @@ export default function TransactionsPage() {
                 key={item.id}
                 onClick={() => setFilter(item.id)}
                 className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  filter === item.id ? "bg-slate-100 text-slate-950" : "text-slate-500 hover:text-slate-200"
+                  filter === item.id ? "bg-[#c6a15b] text-[#08111f]" : "text-slate-500 hover:text-slate-200"
                 }`}
               >
                 {item.label}

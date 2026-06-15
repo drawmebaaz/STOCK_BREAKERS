@@ -34,7 +34,7 @@ function StatCard({ label, value, sub, tone = "neutral" }) {
 }
 
 function RiskMeter({ score, label, color }) {
-  const colorMap = { green: "#52c78a", amber: "#d6a84f", red: "#f26d6d" };
+  const colorMap = { green: "#4fbf86", amber: "#d7a84d", red: "#e06f70" };
   const fill = colorMap[color] || "#95a3b7";
 
   return (
@@ -377,9 +377,9 @@ export default function InsightsPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#7aa7d9]" />Historical</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#52c78a]" />Median</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#f26d6d]" />Tail</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#7ba8d8]" />Historical</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#c6a15b]" />Median</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#e06f70]" />Tail</span>
               </div>
             </div>
 
@@ -409,12 +409,12 @@ export default function InsightsPage() {
                     labelFormatter={(label) => (label === 0 ? "Now" : label > 0 ? `Day +${label}` : `Day ${label}`)}
                   />
                   <ReferenceLine x={0} stroke="#243041" strokeDasharray="4 4" />
-                  <Line dataKey="historical" stroke="#7aa7d9" strokeWidth={2} dot={false} name="Historical" connectNulls />
-                  <Line dataKey="p95" stroke="#9b8bd8" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="95th pct" connectNulls />
-                  <Line dataKey="p75" stroke="#86d7b0" strokeWidth={1} dot={false} strokeDasharray="3 3" name="75th pct" connectNulls />
-                  <Line dataKey="p50" stroke="#52c78a" strokeWidth={2.2} dot={false} name="Median" connectNulls />
-                  <Line dataKey="p25" stroke="#d6a84f" strokeWidth={1} dot={false} strokeDasharray="3 3" name="25th pct" connectNulls />
-                  <Line dataKey="p5" stroke="#f26d6d" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="5th pct" connectNulls />
+                  <Line dataKey="historical" stroke="#7ba8d8" strokeWidth={2} dot={false} name="Historical" connectNulls />
+                  <Line dataKey="p95" stroke="#53d6d0" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="95th pct" connectNulls />
+                  <Line dataKey="p75" stroke="#7ba8d8" strokeWidth={1} dot={false} strokeDasharray="3 3" name="75th pct" connectNulls />
+                  <Line dataKey="p50" stroke="#c6a15b" strokeWidth={2.2} dot={false} name="Median" connectNulls />
+                  <Line dataKey="p25" stroke="#d7a84d" strokeWidth={1} dot={false} strokeDasharray="3 3" name="25th pct" connectNulls />
+                  <Line dataKey="p5" stroke="#e06f70" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="5th pct" connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>

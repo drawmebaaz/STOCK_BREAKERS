@@ -32,6 +32,7 @@ export default function TradePage() {
   const maxBuyQty = price > 0 ? Math.min(10000, Math.floor(cashBalance / price)) : 0;
   const maxOrderQty = mode === "buy" ? maxBuyQty : sellCapacity;
   const positionAfter = mode === "buy" ? sellCapacity + qty : Math.max(sellCapacity - qty, 0);
+  const currentPositionValue = price * sellCapacity;
   const cashUsagePct = mode === "buy" && cashBalance > 0 ? (total / cashBalance) * 100 : 0;
   const reviewDriftPct = reviewSnapshot?.price
     ? Math.abs((price - reviewSnapshot.price) / reviewSnapshot.price) * 100
@@ -90,8 +91,9 @@ export default function TradePage() {
       ]
     : [
         { label: "1", value: 1 },
-        { label: "Half", value: Math.max(1, Math.floor(sellCapacity * 0.5)) },
-        { label: "Max", value: sellCapacity },
+        { label: "25%", value: Math.max(1, Math.floor(sellCapacity * 0.25)) },
+        { label: "50%", value: Math.max(1, Math.floor(sellCapacity * 0.5)) },
+        { label: "Sell all", value: sellCapacity },
       ];
 
   const execute = async () => {
@@ -192,6 +194,14 @@ export default function TradePage() {
                   <p className="stat-label">Held</p>
                   <p className="mono mt-1 text-sm text-slate-300">{sellCapacity} shares</p>
                 </div>
+                <div>
+                  <p className="stat-label">Avg cost</p>
+                  <p className="mono mt-1 text-sm text-slate-300">{holding ? currency(holding.avgCost) : "--"}</p>
+                </div>
+                <div>
+                  <p className="stat-label">Position value</p>
+                  <p className="mono mt-1 text-sm text-slate-300">{sellCapacity ? currency(currentPositionValue) : "--"}</p>
+                </div>
               </div>
             </div>
           ) : (
@@ -252,7 +262,7 @@ export default function TradePage() {
                 <p className="mt-2 text-xs text-slate-500">
                   {mode === "buy"
                     ? `Max affordable: ${maxBuyQty} shares at current mark.`
-                    : `Available to sell: ${sellCapacity} shares.`}
+                    : `Available to sell: ${maxOrderQty} shares.`}
                 </p>
               </div>
 
@@ -329,10 +339,28 @@ export default function TradePage() {
                   </div>
                 )}
                 {reviewSnapshot && (
-                  <div className="flex justify-between gap-4 border-t border-slate-800 pt-3">
-                    <span className="text-slate-500">Reviewed mark</span>
-                    <span className="mono text-slate-300">{currency(reviewSnapshot.price)}</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between gap-4 border-t border-slate-800 pt-3">
+                      <span className="text-slate-500">Reviewed mark</span>
+                      <span className="mono text-slate-300">{currency(reviewSnapshot.price)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-slate-500">Review time</span>
+                      <span className="mono text-slate-300">
+                        {new Date(reviewSnapshot.createdAt).toLocaleTimeString("en-IN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-slate-500">Price movement</span>
+                      <span className={reviewDriftPct > 0.25 ? "mono text-amber-300" : "mono text-slate-300"}>
+                        {reviewDriftPct.toFixed(2)}%
+                      </span>
+                    </div>
+                  </>
                 )}
               </div>
 

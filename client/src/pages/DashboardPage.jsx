@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Star } from "lucide-react";
 import { useAuthStore, usePriceStore, usePortfolioStore } from "../stores/index.js";
-import { usePortfolio } from "../hooks/index.js";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
 
@@ -26,9 +25,10 @@ function Metric({ label, value, sub, tone = "neutral" }) {
 function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
   const isUp = stock.change >= 0;
   const inWatch = watchlist.includes(stock.ticker);
+  const activity = Math.min(99, Math.max(8, Math.round(Math.abs(stock.change) * 34 + 18)));
 
   return (
-    <tr>
+    <tr data-selected={inWatch ? "true" : undefined}>
       <td>
         <div className="flex items-center gap-3">
           <button
@@ -45,15 +45,23 @@ function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
           </button>
           <div>
             <p className="ticker-chip">{stock.ticker}</p>
-            <p className="mt-1 text-xs text-slate-500">{stock.name}</p>
           </div>
         </div>
       </td>
+      <td className="text-slate-400">{stock.name}</td>
       <td className="text-right mono text-slate-100">{currency(stock.price)}</td>
       <td className="text-right">
         <span className={isUp ? "badge-up" : "badge-down"}>{signedPercent(stock.change)}</span>
       </td>
       <td className="text-slate-500">{stock.sector}</td>
+      <td>
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-16 rounded-full bg-slate-900">
+            <div className="h-full rounded-full bg-[#53d6d0]" style={{ width: `${activity}%` }} />
+          </div>
+          <span className="mono text-xs text-slate-500">{activity}</span>
+        </div>
+      </td>
       <td className="text-right">
         <button onClick={() => onTrade(stock.ticker)} className="btn-ghost px-3 py-1.5 text-xs">
           Trade
@@ -72,7 +80,6 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  usePortfolio();
 
   useEffect(() => {
     api.get("/auth/me").then(({ data }) => {
@@ -122,7 +129,7 @@ export default function DashboardPage() {
           <p className="stat-label">Trading workspace</p>
           <h1 className="mt-2 text-2xl font-semibold text-slate-50">Portfolio Overview</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Live simulated prices, virtual cash, watchlist, and portfolio exposure.
+            Track virtual capital, positions, live prices, and portfolio movement in one disciplined workspace.
           </p>
         </div>
         <button onClick={() => navigate("/trade")} className="btn-primary">
@@ -151,7 +158,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-3 border-b border-slate-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="section-title">Market Watch</h2>
-              <p className="section-subtitle mt-1">{stocks.length} simulated instruments streaming</p>
+              <p className="section-subtitle mt-1">{stocks.length} simulated instruments streaming with activity signals</p>
             </div>
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={15} />
@@ -168,10 +175,12 @@ export default function DashboardPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Instrument</th>
+                  <th>Ticker</th>
+                  <th>Company</th>
                   <th className="text-right">Last</th>
                   <th className="text-right">Move</th>
                   <th>Sector</th>
+                  <th>Activity</th>
                   <th className="text-right">Action</th>
                 </tr>
               </thead>

@@ -1,7 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./stores/index.js";
-import { useSocket } from "./hooks/index.js";
+import { usePortfolio, useSocket } from "./hooks/index.js";
 import Navbar from "./components/Shared/Navbar.jsx";
 import Sidebar from "./components/Shared/Sidebar.jsx";
 
@@ -20,13 +20,14 @@ const Protected = ({ children }) => {
 
 const AppLayout = ({ children }) => {
   useSocket();
+  usePortfolio();
   return (
     <div className="workspace-shell flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Navbar />
-        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 xl:p-7">
-          <div className="mx-auto max-w-[1500px]">{children}</div>
+        <main className="flex-1 overflow-y-auto p-3 pb-24 md:p-5 xl:p-6">
+          <div className="mx-auto max-w-[1600px]">{children}</div>
         </main>
       </div>
     </div>

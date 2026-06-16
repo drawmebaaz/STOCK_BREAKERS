@@ -7,6 +7,8 @@ Thumbs.db
 logs/
 artifacts/
 
+open.txt
+
 # Environment files
 .env
 .env.*

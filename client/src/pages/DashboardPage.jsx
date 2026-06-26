@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Star } from "lucide-react";
 import { useAuthStore, usePriceStore, usePortfolioStore } from "../stores/index.js";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
@@ -25,7 +24,6 @@ function Metric({ label, value, sub, tone = "neutral" }) {
 function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
   const isUp = stock.change >= 0;
   const inWatch = watchlist.includes(stock.ticker);
-  const activity = Math.min(99, Math.max(8, Math.round(Math.abs(stock.change) * 34 + 18)));
 
   return (
     <tr data-selected={inWatch ? "true" : undefined}>
@@ -33,15 +31,15 @@ function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
         <div className="flex items-center gap-3">
           <button
             onClick={() => onToggleWatch(stock.ticker)}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+            className={`inline-flex h-8 min-w-[64px] items-center justify-center rounded-md border px-2 text-xs font-semibold transition-colors ${
               inWatch
-                ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                : "border-transparent text-slate-600 hover:border-slate-800 hover:text-slate-300"
+                ? "border-[#8f713e]/60 bg-[#bc9042]/10 text-[#d3aa5e]"
+                : "border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-200"
             }`}
             title={inWatch ? "Remove from watchlist" : "Add to watchlist"}
             aria-label={inWatch ? "Remove from watchlist" : "Add to watchlist"}
           >
-            <Star size={15} fill={inWatch ? "currentColor" : "none"} />
+            {inWatch ? "Added" : "Watch"}
           </button>
           <div>
             <p className="ticker-chip">{stock.ticker}</p>
@@ -54,14 +52,6 @@ function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
         <span className={isUp ? "badge-up" : "badge-down"}>{signedPercent(stock.change)}</span>
       </td>
       <td className="text-slate-500">{stock.sector}</td>
-      <td>
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 w-16 rounded-full bg-slate-900">
-            <div className="h-full rounded-full bg-[#53d6d0]" style={{ width: `${activity}%` }} />
-          </div>
-          <span className="mono text-xs text-slate-500">{activity}</span>
-        </div>
-      </td>
       <td className="text-right">
         <button onClick={() => onTrade(stock.ticker)} className="btn-ghost px-3 py-1.5 text-xs">
           Trade
@@ -127,9 +117,9 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="stat-label">Trading workspace</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Portfolio Overview</h1>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">My Practice Portfolio</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Track virtual capital, positions, live prices, and portfolio movement in one disciplined workspace.
+            Track virtual cash, holdings, price movement, and the stocks you want to watch.
           </p>
         </div>
         <button onClick={() => navigate("/trade")} className="btn-primary">
@@ -143,7 +133,7 @@ export default function DashboardPage() {
           <Metric label="Virtual cash" value={currency(summary.cash)} />
           <Metric label="Market value" value={currency(summary.stockValue)} />
           <Metric
-            label="Unrealized P&L"
+            label="Open gain/loss"
             value={`${summary.pnl >= 0 ? "+" : ""}${currency(summary.pnl)}`}
             sub={signedPercent(summary.pnlPct)}
             tone={summary.pnl >= 0 ? "positive" : "negative"}
@@ -153,18 +143,17 @@ export default function DashboardPage() {
 
       {error && <div className="alert-error">{error}</div>}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-6 2xl:grid-cols-[1fr_320px]">
         <div className="panel overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-slate-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="section-title">Market Watch</h2>
-              <p className="section-subtitle mt-1">{stocks.length} simulated instruments streaming with activity signals</p>
+              <p className="section-subtitle mt-1">{stocks.length} stocks with live practice prices</p>
             </div>
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={15} />
+            <div className="w-full sm:w-72">
               <input
-                className="input py-1.5 pl-9"
-                placeholder="Search ticker, company, sector"
+                className="input py-1.5"
+                placeholder="Search symbol, company, sector"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
@@ -175,12 +164,11 @@ export default function DashboardPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Ticker</th>
+                  <th>Symbol</th>
                   <th>Company</th>
                   <th className="text-right">Last</th>
                   <th className="text-right">Move</th>
                   <th>Sector</th>
-                  <th>Activity</th>
                   <th className="text-right">Action</th>
                 </tr>
               </thead>
@@ -200,33 +188,33 @@ export default function DashboardPage() {
 
           {filtered.length === 0 && (
             <div className="empty-state">
-              <p>{stocks.length === 0 ? "Connecting to market stream..." : "No instruments match your search."}</p>
+              <p>{stocks.length === 0 ? "Connecting to prices..." : "No stocks match your search."}</p>
             </div>
           )}
         </div>
 
         <aside className="space-y-4">
           <div className="panel p-4">
-            <h2 className="section-title">Market Breadth</h2>
+            <h2 className="section-title">Market Snapshot</h2>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
-                <p className="stat-label">Advancers</p>
+                <p className="stat-label">Gainers</p>
                 <p className="mono mt-1 text-lg font-semibold text-emerald-300">{gainers}</p>
               </div>
               <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
-                <p className="stat-label">Decliners</p>
+                <p className="stat-label">Losers</p>
                 <p className="mono mt-1 text-lg font-semibold text-red-300">{decliners}</p>
               </div>
             </div>
             <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-500">Strongest tape</span>
+                <span className="text-xs text-slate-500">Top mover</span>
                 <span className="mono text-sm text-emerald-300">
                   {strongest ? `${strongest.ticker} ${signedPercent(strongest.change)}` : "--"}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-500">Weakest tape</span>
+                <span className="text-xs text-slate-500">Biggest drop</span>
                 <span className="mono text-sm text-red-300">
                   {weakest ? `${weakest.ticker} ${signedPercent(weakest.change)}` : "--"}
                 </span>
@@ -241,7 +229,7 @@ export default function DashboardPage() {
             </div>
             <div className="mt-4 space-y-2">
               {watchedStocks.length === 0 ? (
-                <p className="text-sm text-slate-500">Star instruments from Market Watch to monitor them here.</p>
+                <p className="text-sm text-slate-500">Add stocks from Market Watch to monitor them here.</p>
               ) : (
                 watchedStocks.map((stock) => (
                   <button

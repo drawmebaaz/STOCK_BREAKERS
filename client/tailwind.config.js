@@ -4,10 +4,10 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: { 500: "#c6a15b", 600: "#8b713e", 900: "#241c10" },
-        tape: { 500: "#53d6d0", 900: "#062422" },
-        up: "#4fbf86",
-        down: "#e06f70",
+        brand: { 500: "#bc9042", 600: "#8f713e", 900: "#241c10" },
+        tape: { 500: "#68c8c3", 900: "#0d2d2a" },
+        up: "#3fb77c",
+        down: "#dc6b69",
       },
     },
   },

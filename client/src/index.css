@@ -4,35 +4,35 @@
 
 :root {
   color-scheme: dark;
-  --surface: #070b13;
-  --surface-soft: #0d1420;
-  --surface-elevated: #111a28;
-  --surface-muted: #172231;
-  --border: #2b3849;
-  --border-soft: #1c2736;
-  --text: #f1eee7;
-  --text-muted: #9aa8b8;
-  --text-faint: #637286;
-  --brass: #c6a15b;
-  --brass-soft: #8b713e;
-  --cyan: #53d6d0;
-  --up: #4fbf86;
-  --down: #e06f70;
-  --warn: #d7a84d;
-  --risk: #c96d43;
-  --info: #7ba8d8;
+  --surface: #0a1017;
+  --surface-soft: #101821;
+  --surface-elevated: #151e29;
+  --surface-muted: #1c2632;
+  --border: #303b48;
+  --border-soft: #23303d;
+  --text: #eef2f4;
+  --text-muted: #a7b1bd;
+  --text-faint: #738191;
+  --brass: #bc9042;
+  --brass-soft: #8f713e;
+  --cyan: #68c8c3;
+  --up: #3fb77c;
+  --down: #dc6b69;
+  --warn: #c9973f;
+  --risk: #c7794d;
+  --info: #7ea4ce;
 }
 
 @layer base {
   * { box-sizing: border-box; }
 
   html {
-    background: #050914;
+    background: var(--surface);
   }
 
   body {
     margin: 0;
-    background: #060b14;
+    background: var(--surface);
     color: var(--text);
     font-family:
       Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -46,44 +46,44 @@
   input,
   select {
     letter-spacing: 0;
-    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c6a15b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#060b14];
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-[#bc9042] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a1017];
   }
 
   ::selection {
-    background: rgba(198, 161, 91, 0.28);
+    background: rgba(188, 144, 66, 0.28);
   }
 
   ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-track { background: #060b14; }
-  ::-webkit-scrollbar-thumb { background: #2d3948; border-radius: 999px; }
-  ::-webkit-scrollbar-thumb:hover { background: #435166; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: #354251; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #4a5868; }
 }
 
 @layer components {
   .workspace-shell {
-    background: #060b14;
+    background: var(--surface);
   }
 
   .panel {
-    background: color-mix(in srgb, var(--surface-soft) 92%, #192638 8%);
+    background: var(--surface-soft);
     border: 1px solid var(--border-soft);
     border-radius: 8px;
-    box-shadow: inset 0 1px 0 rgba(241, 238, 231, 0.025);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
   }
 
   .card {
-    background: color-mix(in srgb, var(--surface-soft) 92%, #192638 8%);
+    background: var(--surface-soft);
     border: 1px solid var(--border-soft);
     border-radius: 8px;
-    box-shadow: inset 0 1px 0 rgba(241, 238, 231, 0.025);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
     @apply p-4;
   }
 
   .metric-card {
-    background: color-mix(in srgb, var(--surface-soft) 92%, #192638 8%);
+    background: #111a24;
     border: 1px solid var(--border-soft);
     border-radius: 8px;
-    box-shadow: inset 0 1px 0 rgba(241, 238, 231, 0.025);
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
     @apply px-4 py-3;
   }
 
@@ -98,11 +98,11 @@
 
   .stat-label {
     color: var(--text-faint);
-    @apply text-[11px] font-medium uppercase tracking-[0.14em];
+    @apply text-[11px] font-semibold uppercase tracking-[0.06em];
   }
 
   .stat-value {
-    @apply font-mono text-xl font-semibold text-slate-50 tabular-nums;
+    @apply text-xl font-semibold text-slate-50 tabular-nums;
   }
 
   .mono {
@@ -111,7 +111,7 @@
 
   .btn-primary {
     background: var(--brass);
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-[#08111f] transition-colors hover:bg-[#d7b46f] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-[#08111f] transition-colors hover:bg-[#d3aa5e] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-buy {
@@ -124,43 +124,43 @@
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-[#0b1320]/70 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:border-[#8b713e]/70 hover:bg-[#111a28] hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-slate-700/80 bg-[#111923] px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:border-slate-500 hover:bg-[#182331] hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .input {
-    @apply w-full rounded-md border border-slate-800 bg-[#060b14]/75 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 transition-colors focus:border-[#8b713e] focus:ring-0;
+    @apply w-full rounded-md border border-slate-700/80 bg-[#0b121a] px-3 py-2 text-sm text-slate-100 placeholder-slate-500 transition-colors focus:border-[#bc9042] focus:ring-0;
   }
 
   .badge-up {
     color: var(--up);
-    background: rgba(82, 199, 138, 0.1);
-    @apply inline-flex items-center rounded px-2 py-0.5 font-mono text-xs font-semibold tabular-nums;
+    background: rgba(63, 183, 124, 0.1);
+    @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold tabular-nums;
   }
 
   .badge-down {
     color: var(--down);
-    background: rgba(242, 109, 109, 0.1);
-    @apply inline-flex items-center rounded px-2 py-0.5 font-mono text-xs font-semibold tabular-nums;
+    background: rgba(220, 107, 105, 0.11);
+    @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold tabular-nums;
   }
 
   .badge-neutral {
-    @apply inline-flex items-center rounded bg-slate-800 px-2 py-0.5 font-mono text-xs font-medium text-slate-400 tabular-nums;
+    @apply inline-flex items-center rounded border border-slate-700/70 bg-slate-900/40 px-2 py-0.5 text-xs font-medium text-slate-400 tabular-nums;
   }
 
   .badge-accent {
     color: var(--brass);
-    background: rgba(198, 161, 91, 0.1);
-    @apply inline-flex items-center rounded px-2 py-0.5 font-mono text-xs font-semibold tabular-nums;
+    background: rgba(188, 144, 66, 0.1);
+    @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold tabular-nums;
   }
 
   .badge-cyan {
     color: var(--cyan);
-    background: rgba(83, 214, 208, 0.09);
-    @apply inline-flex items-center rounded px-2 py-0.5 font-mono text-xs font-semibold tabular-nums;
+    background: rgba(104, 200, 195, 0.1);
+    @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold tabular-nums;
   }
 
   .ticker-chip {
-    @apply inline-flex items-center rounded border border-slate-800 bg-[#060b14] px-2 py-1 font-mono text-xs font-semibold text-slate-100;
+    @apply inline-flex items-center rounded border border-slate-700/80 bg-[#0b121a] px-2 py-1 font-mono text-xs font-semibold text-slate-100;
   }
 
   .data-table {
@@ -168,15 +168,15 @@
   }
 
   .data-table thead {
-    @apply sticky top-0 z-10 bg-[#0d1420]/95 backdrop-blur;
+    @apply sticky top-0 z-10 bg-[#101821];
   }
 
   .data-table th {
-    @apply border-b border-slate-800 px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500;
+    @apply border-b border-slate-700/70 px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500;
   }
 
   .data-table td {
-    @apply border-b border-slate-800/70 px-4 py-3 text-slate-300;
+    @apply border-b border-slate-800/80 px-4 py-3 text-slate-300;
   }
 
   .data-table tbody tr {
@@ -184,7 +184,7 @@
   }
 
   .data-table tbody tr[data-selected="true"] {
-    background: rgba(198, 161, 91, 0.055);
+    background: rgba(188, 144, 66, 0.055);
   }
 
   .empty-state {

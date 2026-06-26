@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { useAuthStore, usePriceStore } from "../stores/index.js";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
@@ -45,9 +44,9 @@ export default function TradePage() {
         : "";
   const orderHint =
     !validation && mode === "buy" && cashUsagePct > 25
-      ? `This order uses ${cashUsagePct.toFixed(1)}% of available virtual cash. Consider a smaller practice size if you are testing a new idea.`
+        ? `This trade uses ${cashUsagePct.toFixed(1)}% of available virtual cash. Consider a smaller size if you are testing a new idea.`
       : !validation && mode === "sell" && qty === sellCapacity && sellCapacity > 0
-        ? "This order exits the full simulated position."
+        ? "This trade sells the full practice holding."
         : "";
 
   useEffect(() => {
@@ -110,7 +109,7 @@ export default function TradePage() {
       setReviewSnapshot(null);
       setStatus({
         ok: false,
-        msg: `The simulated price moved ${reviewDriftPct.toFixed(2)}% after review. Review the updated order before confirming.`,
+        msg: `The price moved ${reviewDriftPct.toFixed(2)}% after review. Please check the updated trade before confirming.`,
       });
       return;
     }
@@ -138,26 +137,26 @@ export default function TradePage() {
 
   const canSubmit = !loading && Boolean(stock) && qty > 0 && price > 0 && !validation;
   const actionLabel = reviewing
-    ? `Confirm ${mode === "buy" ? "buy" : "sell"} order`
-    : `Review ${mode === "buy" ? "buy" : "sell"} order`;
+    ? `Confirm ${mode === "buy" ? "buy" : "sell"} trade`
+    : `Review ${mode === "buy" ? "buy" : "sell"} trade`;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="stat-label">Order management</p>
+          <p className="stat-label">Practice trades</p>
           <h1 className="mt-2 text-2xl font-semibold text-slate-50">Trade Desk</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Place intentional simulated orders with a clear virtual-cash breakdown.
+            Buy or sell with virtual cash and review the effect before confirming.
           </p>
         </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
         <section className="panel p-4">
-          <h2 className="section-title">Instrument</h2>
+          <h2 className="section-title">Stock</h2>
           <div className="mt-4">
-            <label className="stat-label mb-1.5 block">Select stock</label>
+            <label className="stat-label mb-1.5 block">Choose stock</label>
             <select
               className="input"
               value={ticker}
@@ -205,17 +204,17 @@ export default function TradePage() {
               </div>
             </div>
           ) : (
-            <div className="mt-4 empty-state min-h-32">Connecting to market stream...</div>
+            <div className="mt-4 empty-state min-h-32">Connecting to prices...</div>
           )}
         </section>
 
         <section className="panel overflow-hidden">
           <div className="border-b border-slate-800 px-4 py-3">
-            <h2 className="section-title">Order Ticket</h2>
-            <p className="section-subtitle mt-1">All orders use virtual funds only.</p>
+            <h2 className="section-title">Trade Ticket</h2>
+            <p className="section-subtitle mt-1">All trades use virtual funds only.</p>
           </div>
 
-          <div className="grid gap-6 p-4 lg:grid-cols-[1fr_340px]">
+          <div className="grid gap-6 p-4 2xl:grid-cols-[1fr_340px]">
             <div className="space-y-4">
               <div className="grid grid-cols-2 overflow-hidden rounded-md border border-slate-800 bg-slate-950/60">
                 <button
@@ -261,7 +260,7 @@ export default function TradePage() {
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
                   {mode === "buy"
-                    ? `Max affordable: ${maxBuyQty} shares at current mark.`
+                    ? `Max affordable: ${maxBuyQty} shares at the current price.`
                     : `Available to sell: ${maxOrderQty} shares.`}
                 </p>
               </div>
@@ -276,10 +275,10 @@ export default function TradePage() {
 
               {reviewing && !validation && (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                  Review this simulated {mode} order before confirming. No real money is used.
+                  Review this practice {mode} trade before confirming. No real money is used.
                   {reviewDriftPct > 0.25 && (
                     <span className="mt-2 block text-xs text-amber-200">
-                      Current mark has moved {reviewDriftPct.toFixed(2)}% since review.
+                      Current price has moved {reviewDriftPct.toFixed(2)}% since review.
                     </span>
                   )}
                 </div>
@@ -287,7 +286,6 @@ export default function TradePage() {
 
               {status && (
                 <div className={status.ok ? "alert-success flex items-start gap-2" : "alert-error flex items-start gap-2"}>
-                  {status.ok ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
                   <span>{status.msg}</span>
                 </div>
               )}
@@ -302,10 +300,10 @@ export default function TradePage() {
             </div>
 
             <aside className="rounded-md border border-slate-800 bg-slate-950/50 p-4">
-              <h3 className="section-title">Order Breakdown</h3>
+              <h3 className="section-title">Trade Summary</h3>
               <div className="mt-4 space-y-3 text-sm">
                 <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Last price</span>
+                  <span className="text-slate-500">Current price</span>
                   <span className="mono text-slate-100">{currency(price)}</span>
                 </div>
                 <div className="flex justify-between gap-4">
@@ -313,7 +311,7 @@ export default function TradePage() {
                   <span className="mono text-slate-100">{qty}</span>
                 </div>
                 <div className="flex justify-between gap-4 border-t border-slate-800 pt-3">
-                  <span className="font-medium text-slate-300">Estimated value</span>
+                  <span className="font-medium text-slate-300">Trade value</span>
                   <span className="mono font-semibold text-slate-50">{currency(total)}</span>
                 </div>
                 <div className="flex justify-between gap-4 pt-2">
@@ -332,7 +330,7 @@ export default function TradePage() {
                 </div>
                 {mode === "buy" && (
                   <div className="flex justify-between gap-4">
-                    <span className="text-slate-500">Buying power used</span>
+                  <span className="text-slate-500">Cash used</span>
                     <span className={cashUsagePct > 25 ? "mono text-amber-300" : "mono text-slate-300"}>
                       {cashUsagePct.toFixed(1)}%
                     </span>
@@ -341,7 +339,7 @@ export default function TradePage() {
                 {reviewSnapshot && (
                   <>
                     <div className="flex justify-between gap-4 border-t border-slate-800 pt-3">
-                      <span className="text-slate-500">Reviewed mark</span>
+                    <span className="text-slate-500">Reviewed price</span>
                       <span className="mono text-slate-300">{currency(reviewSnapshot.price)}</span>
                     </div>
                     <div className="flex justify-between gap-4">

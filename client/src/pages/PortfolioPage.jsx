@@ -1,11 +1,10 @@
 import React from "react";
-import { RefreshCw } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { usePortfolioStore, usePriceStore } from "../stores/index.js";
 import { usePortfolio } from "../hooks/index.js";
 import { currency, signedPercent } from "../utils/format.js";
 
-const COLORS = ["#c6a15b", "#53d6d0", "#7ba8d8", "#4fbf86", "#d7a84d", "#e06f70", "#9aa8b8", "#c96d43"];
+const COLORS = ["#bc9042", "#7ea4ce", "#3fb77c", "#c9973f", "#dc6b69", "#8b97a6", "#c7794d", "#68c8c3"];
 
 function Metric({ label, value, sub, tone = "neutral" }) {
   const toneClass = {
@@ -114,13 +113,12 @@ export default function PortfolioPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="stat-label">Portfolio control</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Holdings & Exposure</h1>
-          <p className="mt-1 text-sm text-slate-500">Allocation, live valuation, concentration, and unrealized performance.</p>
+          <p className="stat-label">Portfolio</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Holdings</h1>
+          <p className="mt-1 text-sm text-slate-500">See what you own, what it is worth now, and how each holding is doing.</p>
         </div>
         <button onClick={refresh} className="btn-ghost">
-          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          Refresh
+          {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
@@ -138,7 +136,7 @@ export default function PortfolioPage() {
           />
           <Metric label="Invested capital" value={currency(invested)} />
           <Metric
-            label="Open P&L"
+            label="Open gain/loss"
             value={`${summary.pnl >= 0 ? "+" : ""}${currency(summary.pnl)}`}
             sub={signedPercent(summary.pnlPct)}
             tone={summary.pnl >= 0 ? "positive" : "negative"}
@@ -146,12 +144,12 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+      <div className="grid gap-6 2xl:grid-cols-[360px_1fr]">
         <aside className="space-y-4">
           <div className="panel p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="section-title">Allocation Map</h2>
+                <h2 className="section-title">Allocation</h2>
                 <p className="section-subtitle mt-1">{enriched.length} open positions</p>
               </div>
               <span className="badge-neutral">{currency(marketValue, { maximumFractionDigits: 0 })}</span>
@@ -159,7 +157,7 @@ export default function PortfolioPage() {
 
             {pieData.length === 0 ? (
               <div className="empty-state min-h-64">
-                <p>No active exposure.</p>
+                <p>No holdings yet.</p>
               </div>
             ) : (
               <>
@@ -202,21 +200,21 @@ export default function PortfolioPage() {
           </div>
 
           <div className="panel p-4">
-            <h2 className="section-title">Position Quality</h2>
+            <h2 className="section-title">Position Check</h2>
             <div className="mt-4 space-y-3">
               <div className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
                 <span className="text-xs text-slate-500">Winning positions</span>
                 <span className="mono text-sm text-slate-100">{positivePositions}/{enriched.length || 0}</span>
               </div>
               <div className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
-                <span className="text-xs text-slate-500">Largest weight</span>
+                <span className="text-xs text-slate-500">Largest holding</span>
                 <span className={largestWeight > 35 ? "mono text-sm text-amber-300" : "mono text-sm text-slate-100"}>
                   {largestWeight.toFixed(1)}%
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
                 <span className="text-xs text-slate-500">Cash reserve</span>
-                <span className="mono text-sm text-[#c6a15b]">{currency(summary?.cash)}</span>
+                <span className="mono text-sm text-[#d3aa5e]">{currency(summary?.cash)}</span>
               </div>
             </div>
           </div>
@@ -225,8 +223,8 @@ export default function PortfolioPage() {
         <div className="panel overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
             <div>
-              <h2 className="section-title">Holdings Ledger</h2>
-              <p className="section-subtitle mt-1">Cost basis, live mark, value, and unrealized return.</p>
+              <h2 className="section-title">Holdings Table</h2>
+              <p className="section-subtitle mt-1">Average cost, current price, value, and current return.</p>
             </div>
             <span className="badge-neutral">{enriched.length} rows</span>
           </div>
@@ -240,16 +238,16 @@ export default function PortfolioPage() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Instrument</th>
+                    <th>Stock</th>
                     <th>Sector</th>
                     <th className="text-right">Quantity</th>
                     <th className="text-right">Avg Cost</th>
                     <th className="text-right">Last</th>
                     <th className="text-right">Market Value</th>
                     <th className="text-right">Weight</th>
-                    <th className="text-right">P&L</th>
+                    <th className="text-right">Gain/Loss</th>
                     <th className="text-right">Return</th>
-                    <th className="text-right">Risk Note</th>
+                    <th className="text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody>

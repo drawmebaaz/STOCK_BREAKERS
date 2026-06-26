@@ -1,6 +1,6 @@
 # StockBreakers
 
-StockBreakers is a production-minded paper trading and stock analytics platform. It combines a premium React trading workspace, authenticated portfolio accounting, real-time simulated market data, and a FastAPI quantitative analytics service for Monte Carlo forecasting, downside risk, and signal-based research.
+StockBreakers is a production-minded paper-trading simulator. It combines a clean React workspace, authenticated portfolio accounting, real-time practice prices, virtual buy/sell flows, trade history, and a simple research screen for comparing possible price ranges before a practice trade.
 
 > Educational paper-trading app only. StockBreakers does not provide financial advice and does not execute real trades.
 
@@ -27,11 +27,11 @@ docker compose exec server npm run seed:demo
 
 ## Why This Project Stands Out
 
-- Full-stack trading simulator with real authentication, portfolio state, watchlists, order flow, and ledger history.
+- Full-stack trading simulator with real authentication, portfolio state, watchlists, trade flow, and trade history.
 - Microservice architecture using React, Express/MongoDB, Socket.IO, FastAPI/NumPy, and Docker Compose.
-- Backend-owned rolling price history, instead of browser-generated fake histories, powers ML and risk analytics.
-- Quant analytics include bootstrap Monte Carlo forecasts, reproducible model seeds, VaR 95, CVaR 95, downside probability, volatility, drawdown, and Sharpe-like metrics.
-- Secure, intentional trading UX with order review, max affordable/sellable quantity, buying-power usage, stale-price protection, and virtual-funds clarity.
+- Backend-owned rolling price history keeps the research screen consistent across refreshes and devices.
+- Research screen gives a simple forecast range, risk level, plain-language notes, and stock ideas without overloading users with acronyms.
+- Secure, intentional trading UX with trade review, max affordable/sellable quantity, cash usage, stale-price protection, and virtual-funds clarity.
 - Production hardening includes JWT auth, Zod validation, Helmet, CORS configuration, rate limiting, health/readiness probes, Dockerized services, and Nginx frontend hosting.
 
 ## Core Features
@@ -39,25 +39,24 @@ docker compose exec server npm run seed:demo
 Trading workspace:
 
 - Real-time simulated market prices over Socket.IO
-- Market watch with searchable instruments and watchlist controls
-- Buy/sell order ticket with validation and confirmation flow
+- Market watch with searchable stocks and watchlist controls
+- Buy/sell trade ticket with validation and confirmation flow
 - Virtual cash accounting and position-after-order visibility
-- Stale-price guard before confirming reviewed orders
+- Stale-price guard before confirming reviewed trades
 
-Portfolio and ledger:
+Portfolio and history:
 
-- Total equity, virtual cash, market value, and unrealized P&L
+- Total equity, virtual cash, market value, and open gain/loss
 - Holdings table with average cost, live value, and return %
-- Allocation chart and exposure breakdown
-- Transaction ledger with buy/sell notional, realized practice P&L, sell win rate, position-after-fill, and fill references
+- Allocation chart and holdings breakdown
+- Trade history with buy/sell value, closed gain/loss, sell win rate, position-after-trade, and trade IDs
 
-Quant research:
+Research screen:
 
-- Backend-maintained rolling price history per ticker
-- Bootstrap Monte Carlo forecast bands
-- Median, 5th percentile, 95th percentile, gain probability, VaR, CVaR, downside probability, volatility, drawdown, and Sharpe-like metrics
-- Simulated signal sentiment with transparent source labeling
-- Momentum and pullback screeners with rationale and score
+- Backend-maintained rolling price history per stock
+- Simple forecast range with low, middle, and high estimates
+- Risk level and plain-language notes about recent price behavior
+- Stock ideas with short reasons for practice decisions
 
 ## Screenshots
 
@@ -65,13 +64,13 @@ Quant research:
 | --- | --- |
 | ![Portfolio overview](docs/screenshots/dashboard.png) | ![Trade desk](docs/screenshots/trade-desk.png) |
 
-| Portfolio exposure | Research controls |
+| Holdings | Research settings |
 | --- | --- |
-| ![Portfolio exposure](docs/screenshots/portfolio.png) | ![Research controls](docs/screenshots/insights.png) |
+| ![Holdings](docs/screenshots/portfolio.png) | ![Research settings](docs/screenshots/insights.png) |
 
-| Monte Carlo forecast | Transaction ledger |
+| Forecast range | Trade history |
 | --- | --- |
-| ![Monte Carlo forecast](docs/screenshots/insights-forecast.png) | ![Transaction ledger](docs/screenshots/transactions.png) |
+| ![Forecast range](docs/screenshots/insights-forecast.png) | ![Trade history](docs/screenshots/transactions.png) |
 
 ## Development Write-Up
 
@@ -83,9 +82,9 @@ I documented the major problems faced while building StockBreakers and how each 
 
 ```text
 Browser
-  |-- React + Vite trading cockpit
+  |-- React + Vite trading workspace
   |-- Zustand state management
-  |-- Recharts analytics visualizations
+  |-- Recharts charts
   |-- Socket.IO client for live prices
   v
 Express API
@@ -94,39 +93,36 @@ Express API
   |-- Zod validation and security middleware
   |-- MongoDB persistence
   v
-FastAPI ML Service
-  |-- Bootstrap Monte Carlo forecasts
-  |-- Risk metrics: VaR, CVaR, volatility, drawdown, downside probability
-  |-- Simulated signal sentiment and screeners
+FastAPI Research Service
+  |-- Forecast range generation
+  |-- Risk level calculation
+  |-- Practice stock ideas
 ```
 
 ## Tech Stack
 
 - Frontend: React 18, Vite 8, Tailwind CSS, Zustand, Recharts, Lucide
 - Backend: Node.js 20+, Express, MongoDB, Mongoose, JWT, Socket.IO, Zod
-- ML service: FastAPI, Pydantic 2, NumPy, Uvicorn
+- Research service: FastAPI, Pydantic 2, NumPy, Uvicorn
 - Production/runtime: Docker Compose, Nginx, health checks, readiness checks
 
-## ML Pipeline
+## Research Flow
 
-StockBreakers uses a deliberately transparent ML pipeline suitable for an educational simulator:
+StockBreakers keeps the research flow transparent and easy to explain:
 
-1. The backend price engine maintains rolling simulated price history for every ticker.
-2. The Insights screen requests that history through `GET /api/ai/history/:ticker`.
-3. The Express API forwards validated analysis requests to the FastAPI ML service.
-4. FastAPI runs historical bootstrap Monte Carlo simulation using a deterministic seed.
-5. The response includes forecast bands, summary statistics, risk metrics, model metadata, and limitations.
+1. The backend price engine maintains rolling simulated price history for every stock.
+2. The Research screen requests that history through the backend.
+3. The Express API forwards the request to the FastAPI research service.
+4. The research service returns a simple price range, risk level, and practice stock ideas.
+5. The frontend explains the result in user-friendly language instead of exposing backend internals.
 
-Risk outputs include:
+The user sees:
 
-- Annualized volatility
-- Maximum drawdown
-- Sharpe-like ratio
-- VaR 95
-- CVaR 95
-- Downside probability
-- Gain probability
-- Median forecast and percentile forecast bands
+- Current price
+- Low, middle, and high estimate
+- Chance above today's price
+- Risk level
+- Plain-language notes about what to watch
 
 ## Docker Compose
 
@@ -142,7 +138,7 @@ Docker URLs:
 ```text
 Client: http://localhost:3000
 API:    http://localhost:5000/api/health
-ML:     http://localhost:8000/health
+Research service: http://localhost:8000/health
 ```
 
 Seed the demo user:
@@ -187,7 +183,7 @@ Local dev URLs:
 Client:     http://localhost:5173
 API:        http://localhost:5000/api/health
 API ready:  http://localhost:5000/api/ready
-ML docs:    http://localhost:8000/docs
+Research docs: http://localhost:8000/docs
 ```
 
 ## Environment Variables
@@ -215,7 +211,7 @@ VITE_API_URL=http://localhost:5000/api
 VITE_SOCKET_URL=http://localhost:5000
 ```
 
-ML service:
+Research service:
 
 ```text
 CORS_ORIGINS=http://localhost:5173,http://localhost:5000
@@ -241,7 +237,7 @@ Market and portfolio:
 - `POST /api/watchlist/add`
 - `POST /api/watchlist/remove`
 
-AI and research:
+Research:
 
 - `GET /api/ai/history/:ticker`
 - `POST /api/ai/predict`
@@ -253,8 +249,8 @@ Ops:
 
 - `GET /api/health`
 - `GET /api/ready`
-- `GET /health` on the ML service
-- `GET /ready` on the ML service
+- `GET /health` on the research service
+- `GET /ready` on the research service
 
 ## Quality Checks
 

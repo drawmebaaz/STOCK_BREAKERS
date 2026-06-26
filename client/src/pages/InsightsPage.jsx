@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, ArrowUpRight, RefreshCw, SlidersHorizontal } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -33,45 +32,53 @@ function StatCard({ label, value, sub, tone = "neutral" }) {
   );
 }
 
-function RiskMeter({ score, label, color }) {
-  const colorMap = { green: "#4fbf86", amber: "#d7a84d", red: "#e06f70" };
-  const fill = colorMap[color] || "#95a3b7";
+function RiskMeter({ label, color }) {
+  const toneClass = {
+    green: "text-emerald-300",
+    amber: "text-amber-300",
+    red: "text-red-300",
+  }[color] || "text-slate-200";
 
   return (
     <div className="panel p-4">
       <div className="flex items-center justify-between">
-        <h2 className="section-title">Risk Score</h2>
-        <span className="badge-neutral">{label}</span>
+        <h2 className="section-title">Risk Level</h2>
+        <span className="badge-neutral">Practice view</span>
       </div>
-      <div className="mt-5 flex items-center justify-center">
-        <div className="relative h-32 w-32">
-          <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-            <circle cx="50" cy="50" r="40" fill="none" stroke="#1f2937" strokeWidth="10" />
-            <circle
-              cx="50"
-              cy="50"
-              r="40"
-              fill="none"
-              stroke={fill}
-              strokeDasharray={`${(score / 100) * 251.2} 251.2`}
-              strokeLinecap="round"
-              strokeWidth="10"
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="mono text-3xl font-semibold" style={{ color: fill }}>{score}</span>
-            <span className="stat-label">of 100</span>
-          </div>
-        </div>
+      <div className="mt-5 rounded-md border border-slate-800 bg-[#0b121a] p-4">
+        <p className={`text-3xl font-semibold ${toneClass}`}>{label}</p>
+        <p className="mt-2 text-sm leading-6 text-slate-500">Based on recent price swings and drops.</p>
       </div>
       <p className="mt-4 text-sm text-slate-500">
-        Score blends annual volatility and drawdown to frame position risk for education.
+        Higher means the stock has moved around more sharply in the recent sample.
       </p>
     </div>
   );
 }
 
-function SentimentPanel({ sentiment, confidence, headlines, source }) {
+function ResearchTakeaway({ risk }) {
+  const metrics = risk?.metrics || {};
+  const swing = Number(metrics.ann_volatility || 0);
+  const drop = Number(metrics.max_drawdown || 0);
+  const downDays = Number(metrics.downside_probability || 0);
+
+  const swingText = swing >= 35 ? "large" : swing >= 20 ? "moderate" : "mild";
+  const dropText = Math.abs(drop) >= 12 ? "watch the downside before taking a large position" : "recent drops look manageable for a practice trade";
+  const downText = downDays >= 50 ? "down days are showing up often" : "up and down days look fairly balanced";
+
+  return (
+    <div className="panel p-4">
+      <h2 className="section-title">What To Notice</h2>
+      <div className="mt-4 space-y-3 text-sm leading-6 text-slate-400">
+        <p>The recent price movement looks <span className="font-medium text-slate-200">{swingText}</span>.</p>
+        <p>The biggest recent drop suggests you should <span className="font-medium text-slate-200">{dropText}</span>.</p>
+        <p>In the recent sample, <span className="font-medium text-slate-200">{downText}</span>.</p>
+      </div>
+    </div>
+  );
+}
+
+function SentimentPanel({ sentiment, headlines }) {
   const cfg = {
     bullish: { badge: "badge-up", label: "Bullish" },
     bearish: { badge: "badge-down", label: "Bearish" },
@@ -82,12 +89,12 @@ function SentimentPanel({ sentiment, confidence, headlines, source }) {
     <div className="panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="section-title">Signal Sentiment</h2>
+          <h2 className="section-title">Signal Summary</h2>
           <p className="section-subtitle mt-1">
-            Confidence-weighted simulated tape signal{source ? ` from ${source.replaceAll("_", " ")}` : ""}.
+            Practice signal based on recent price movement.
           </p>
         </div>
-        <span className={cfg.badge}>{cfg.label} {Math.round((confidence ?? 0) * 100)}%</span>
+        <span className={cfg.badge}>{cfg.label}</span>
       </div>
 
       {headlines?.length > 0 ? (
@@ -119,18 +126,18 @@ function SuggestionsPanel({ suggestions, priceMap, onTrade }) {
   }
 
   const groups = [
-    { title: "Momentum Screen", items: suggestions.trending_up || [], tone: "positive" },
-    { title: "Pullback Screen", items: suggestions.dip_buys || [], tone: "warning" },
+    { title: "Moving Up", items: suggestions.trending_up || [], tone: "positive" },
+    { title: "Pullback Ideas", items: suggestions.dip_buys || [], tone: "warning" },
   ];
 
   return (
     <div className="panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="section-title">Quant Screeners</h2>
-          <p className="section-subtitle mt-1">Rules-based candidates from current simulated tape.</p>
+          <h2 className="section-title">Stock Ideas</h2>
+          <p className="section-subtitle mt-1">Simple practice scans from the current price movement.</p>
         </div>
-        <span className="badge-neutral">Education only</span>
+        <span className="badge-neutral">Practice only</span>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -165,9 +172,7 @@ function SuggestionsPanel({ suggestions, priceMap, onTrade }) {
                         <span className="flex items-center gap-3">
                           <span className="text-right">
                             <span className="mono block text-sm text-slate-100">{currency(live)}</span>
-                            {item.score !== undefined && <span className="block text-xs text-slate-500">Score {item.score}</span>}
                           </span>
-                          <ArrowUpRight size={15} className="text-slate-500" />
                         </span>
                       </span>
                       {item.rationale && (
@@ -202,7 +207,15 @@ function buildChartData(historicalPrices, forecast) {
 
   return [
     ...hist,
-    { day: 0, historical: historicalPrices.at(-1), p50: historicalPrices.at(-1) },
+    {
+      day: 0,
+      historical: historicalPrices.at(-1),
+      p5: historicalPrices.at(-1),
+      p25: historicalPrices.at(-1),
+      p50: historicalPrices.at(-1),
+      p75: historicalPrices.at(-1),
+      p95: historicalPrices.at(-1),
+    },
     ...future,
   ];
 }
@@ -262,7 +275,7 @@ export default function InsightsPage() {
       setResult({ predict: predRes.data, sentiment: sentRes.data, risk: riskRes.data, prices, history });
       api.get("/ai/suggestions").then(({ data }) => setSuggestions(data)).catch(() => {});
     } catch (err) {
-      setError(err.response?.data?.error || "Research service is unavailable. Check the ML service and try again.");
+      setError(err.response?.data?.error || "Research service is unavailable. Please try again in a moment.");
     } finally {
       setLoading(false);
     }
@@ -278,23 +291,19 @@ export default function InsightsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="stat-label">Research lab</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Forecast & Risk Analytics</h1>
-          <p className="mt-1 text-sm text-slate-500">Monte Carlo paths, sentiment confidence, and risk decomposition for paper trading decisions.</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Price Forecast & Risk Review</h1>
+          <p className="mt-1 text-sm text-slate-500">Run a practice forecast, compare possible price ranges, and review risk before trading.</p>
         </div>
         <button onClick={runAnalysis} disabled={loading || stocks.length === 0} className="btn-primary">
-          {loading ? <RefreshCw size={15} className="animate-spin" /> : <Activity size={15} />}
-          {loading ? "Running" : "Run Analysis"}
+          {loading ? "Checking" : "Review Stock"}
         </button>
       </div>
 
       <div className="panel p-4">
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal size={16} className="text-slate-500" />
-          <h2 className="section-title">Scenario Controls</h2>
-        </div>
+        <h2 className="section-title">Analysis Settings</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <label>
-            <span className="stat-label mb-1 block">Instrument</span>
+            <span className="stat-label mb-1 block">Stock</span>
             <select className="input" value={ticker} onChange={(event) => setTicker(event.target.value)}>
               {stocks.map((stock) => (
                 <option key={stock.ticker} value={stock.ticker}>{stock.ticker} - {stock.name}</option>
@@ -308,13 +317,17 @@ export default function InsightsPage() {
             </select>
           </label>
           <label>
-            <span className="stat-label mb-1 block">Simulations</span>
+            <span className="stat-label mb-1 block">Review depth</span>
             <select className="input" value={sims} onChange={(event) => setSims(+event.target.value)}>
-              {[100, 250, 500, 1000].map((count) => <option key={count} value={count}>{count}</option>)}
+              {[
+                { label: "Quick", value: 100 },
+                { label: "Standard", value: 500 },
+                { label: "Deeper check", value: 1000 },
+              ].map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </label>
           <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
-            <p className="stat-label">Live mark</p>
+            <p className="stat-label">Current price</p>
             <p className="mono mt-1 text-lg font-semibold text-slate-50">{currency(livePrice)}</p>
             <p className="mt-1 text-xs text-slate-500">{selectedStock?.sector || "Market stream"}</p>
           </div>
@@ -328,8 +341,8 @@ export default function InsightsPage() {
       {!result && !loading && (
         <div className="panel">
           <div className="empty-state min-h-64">
-            <p>Choose an instrument and run an analysis to populate the forecast panel.</p>
-            <p className="text-xs">The simulator uses backend-maintained price history with bootstrap resampling for educational comparison.</p>
+            <p>Choose a stock and run an analysis to see the forecast panel.</p>
+            <p className="text-xs">The simulator uses backend price history to create practice comparisons.</p>
           </div>
         </div>
       )}
@@ -337,8 +350,7 @@ export default function InsightsPage() {
       {loading && (
         <div className="panel p-6">
           <div className="flex items-center gap-3 text-sm text-slate-400">
-            <RefreshCw size={16} className="animate-spin" />
-            Loading backend history and running {sims} simulations for {ticker}.
+            Checking recent price history for {ticker}.
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <div className="skeleton h-20" />
@@ -353,33 +365,33 @@ export default function InsightsPage() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
             <StatCard label="Current price" value={currency(result.prices.at(-1))} />
             <StatCard
-              label="Median close"
+              label="Middle estimate"
               value={currency(stats?.median_final)}
               sub={signedPercent(medianMove, 1)}
               tone={medianMove >= 0 ? "positive" : "negative"}
             />
-            <StatCard label="5th percentile" value={currency(stats?.p5_final)} tone="negative" />
-            <StatCard label="95th percentile" value={currency(stats?.p95_final)} tone="positive" />
+            <StatCard label="Low estimate" value={currency(stats?.p5_final)} tone="negative" />
+            <StatCard label="High estimate" value={currency(stats?.p95_final)} tone="positive" />
             <StatCard
-              label="Gain probability"
+              label="Chance above today"
               value={`${stats?.prob_gain ?? 0}%`}
               tone={(stats?.prob_gain ?? 0) >= 50 ? "positive" : "negative"}
             />
-            <StatCard label="Ann. volatility" value={`${stats?.ann_volatility ?? 0}%`} tone="warning" />
+            <StatCard label="Risk level" value={result.risk.label} tone="warning" />
           </div>
 
           <div className="panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="section-title">{ticker} Monte Carlo Bands</h2>
+                <h2 className="section-title">{ticker} Forecast Range</h2>
                 <p className="section-subtitle mt-1">
-                  {horizon}-day horizon across {sims} paths using {result.history?.points || result.prices.length} backend price points.
+                  {horizon}-day practice view using {result.history?.points || result.prices.length} recent price points.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#7ba8d8]" />Historical</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#c6a15b]" />Median</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#e06f70]" />Tail</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#7ba8d8]" />Past price</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#c6a15b]" />Middle</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#e06f70]" />Range</span>
               </div>
             </div>
 
@@ -409,12 +421,12 @@ export default function InsightsPage() {
                     labelFormatter={(label) => (label === 0 ? "Now" : label > 0 ? `Day +${label}` : `Day ${label}`)}
                   />
                   <ReferenceLine x={0} stroke="#243041" strokeDasharray="4 4" />
-                  <Line dataKey="historical" stroke="#7ba8d8" strokeWidth={2} dot={false} name="Historical" connectNulls />
-                  <Line dataKey="p95" stroke="#53d6d0" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="95th pct" connectNulls />
-                  <Line dataKey="p75" stroke="#7ba8d8" strokeWidth={1} dot={false} strokeDasharray="3 3" name="75th pct" connectNulls />
-                  <Line dataKey="p50" stroke="#c6a15b" strokeWidth={2.2} dot={false} name="Median" connectNulls />
-                  <Line dataKey="p25" stroke="#d7a84d" strokeWidth={1} dot={false} strokeDasharray="3 3" name="25th pct" connectNulls />
-                  <Line dataKey="p5" stroke="#e06f70" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="5th pct" connectNulls />
+                  <Line dataKey="historical" stroke="#7ba8d8" strokeWidth={2} dot={false} name="Past price" connectNulls />
+                  <Line dataKey="p95" stroke="#68c8c3" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="High range" connectNulls />
+                  <Line dataKey="p75" stroke="#7ba8d8" strokeWidth={1} dot={false} strokeDasharray="3 3" name="Upper range" connectNulls />
+                  <Line dataKey="p50" stroke="#bc9042" strokeWidth={2.2} dot={false} name="Middle" connectNulls />
+                  <Line dataKey="p25" stroke="#c9973f" strokeWidth={1} dot={false} strokeDasharray="3 3" name="Lower range" connectNulls />
+                  <Line dataKey="p5" stroke="#dc6b69" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="Low range" connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -422,38 +434,10 @@ export default function InsightsPage() {
 
           <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
             <SentimentPanel {...result.sentiment} />
-            <RiskMeter score={result.risk.score} label={result.risk.label} color={result.risk.color} />
+            <RiskMeter label={result.risk.label} color={result.risk.color} />
           </div>
 
-          {result.risk.metrics && (
-            <div className="panel p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="section-title">Risk Breakdown</h2>
-                  <p className="section-subtitle mt-1">Volatility, drawdown, and risk-adjusted return proxies.</p>
-                </div>
-                <span className="badge-neutral">Bootstrap model</span>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                {[
-                  { label: "Annual volatility", value: `${result.risk.metrics.ann_volatility}%`, tone: "warning" },
-                  { label: "Max drawdown", value: `${result.risk.metrics.max_drawdown}%`, tone: "negative" },
-                  { label: "Sharpe ratio", value: result.risk.metrics.sharpe, tone: "info" },
-                  { label: "Daily VaR 95", value: `${result.risk.metrics.var_95 ?? 0}%`, tone: "negative" },
-                  { label: "Daily CVaR 95", value: `${result.risk.metrics.cvar_95 ?? 0}%`, tone: "negative" },
-                  { label: "Down days", value: `${result.risk.metrics.downside_probability ?? 0}%`, tone: "warning" },
-                ].map((item) => (
-                  <StatCard key={item.label} label={item.label} value={item.value} tone={item.tone} />
-                ))}
-              </div>
-              {result.predict.metadata && (
-                <p className="mt-4 text-xs text-slate-600">
-                  Model: {result.predict.metadata.model}; input points: {result.predict.metadata.input_points};
-                  reproducible seed: {result.predict.metadata.seed}.
-                </p>
-              )}
-            </div>
-          )}
+          {result.risk.metrics && <ResearchTakeaway risk={result.risk} />}
         </>
       )}
     </div>

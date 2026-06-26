@@ -15,9 +15,9 @@ def cors_origins() -> list[str]:
 
 
 app = FastAPI(
-    title="StockBreakers ML Service",
+    title="StockBreakers Research Service",
     version="1.0.0",
-    description="Monte Carlo forecasting and rule-based portfolio intelligence for StockBreakers.",
+    description="Practice price ranges, risk labels, and stock ideas for StockBreakers.",
 )
 
 app.add_middleware(
@@ -182,19 +182,19 @@ def sentiment(req: SentimentRequest):
 
     headlines = {
         "bullish": [
-            f"{req.ticker} simulated tape shows positive momentum pressure",
-            f"{req.ticker} signal score is above neutral in this run",
-            f"{req.ticker} risk context should still be checked before sizing",
+            f"{req.ticker} has been moving up in the recent practice prices",
+            f"{req.ticker} looks stronger than neutral in this review",
+            f"Check position size before placing a practice trade in {req.ticker}",
         ],
         "bearish": [
-            f"{req.ticker} simulated tape shows downside pressure",
-            f"{req.ticker} signal score is below neutral in this run",
-            f"{req.ticker} may need tighter sizing or a smaller paper entry",
+            f"{req.ticker} has been moving down in the recent practice prices",
+            f"{req.ticker} looks weaker than neutral in this review",
+            f"Consider a smaller practice trade if you choose {req.ticker}",
         ],
         "neutral": [
-            f"{req.ticker} simulated tape is near neutral",
-            f"{req.ticker} has no strong directional signal in this run",
-            f"{req.ticker} forecast bands may matter more than sentiment here",
+            f"{req.ticker} looks balanced in the recent practice prices",
+            f"{req.ticker} does not show a strong direction in this review",
+            f"Use the forecast range before deciding on {req.ticker}",
         ],
     }
 
@@ -266,7 +266,7 @@ def suggestions(req: SuggestionRequest):
                 "price": stock.price,
                 "change": stock.change,
                 "score": round(min(stock.change * 20, 100), 1),
-                "rationale": "Positive short-term simulated tape with watchlist exclusion.",
+                "rationale": "Recent practice prices are moving up.",
             }
             for stock in movers_up
         ],
@@ -276,7 +276,7 @@ def suggestions(req: SuggestionRequest):
                 "price": stock.price,
                 "change": stock.change,
                 "score": round(min(abs(stock.change) * 18, 100), 1),
-                "rationale": "Negative move flagged for paper-trade pullback review, not a buy recommendation.",
+                "rationale": "Recent practice prices are down, so review risk carefully.",
             }
             for stock in movers_down
         ],

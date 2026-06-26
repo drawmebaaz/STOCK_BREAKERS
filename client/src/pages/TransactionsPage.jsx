@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { currency } from "../utils/format.js";
 
@@ -109,22 +108,21 @@ export default function TransactionsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="stat-label">Execution record</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Transaction Ledger</h1>
-          <p className="mt-1 text-sm text-slate-500">Auditable order trail for every simulated fill.</p>
+          <p className="stat-label">Trade history</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Past Trades</h1>
+          <p className="mt-1 text-sm text-slate-500">A clear record of every practice buy and sell.</p>
         </div>
         <button onClick={loadTransactions} disabled={loading} className="btn-ghost">
-          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          Refresh
+          {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <Metric label="Total orders" value={enrichedTransactions.length} />
-        <Metric label="Buy notional" value={currency(totalBought)} tone="negative" />
-        <Metric label="Sell notional" value={currency(totalSold)} tone="positive" />
+        <Metric label="Spent on buys" value={currency(totalBought)} tone="negative" />
+        <Metric label="Received from sells" value={currency(totalSold)} tone="positive" />
         <Metric
-          label="Realized P&L"
+          label="Closed gain/loss"
           value={`${realizedPnl >= 0 ? "+" : ""}${currency(realizedPnl)}`}
           sub={sells.length > 0 ? `${sells.length} closed sell orders` : "No sells yet"}
           tone={realizedPnl >= 0 ? "positive" : "negative"}
@@ -142,9 +140,9 @@ export default function TransactionsPage() {
       <div className="panel overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-slate-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="section-title">Order History</h2>
+            <h2 className="section-title">Trade History</h2>
             <p className="section-subtitle mt-1">
-              {filtered.length} rows in current view. Realized P&L is reconstructed from the latest 200 fills.
+              {filtered.length} rows in this view. Closed gain/loss is rebuilt from the latest 200 trades.
             </p>
           </div>
           <div className="inline-flex rounded-md border border-slate-800 bg-slate-950/60 p-1">
@@ -180,14 +178,14 @@ export default function TransactionsPage() {
               <thead>
                 <tr>
                   <th>Side</th>
-                  <th>Instrument</th>
+                  <th>Stock</th>
                   <th className="text-right">Quantity</th>
-                  <th className="text-right">Fill Price</th>
-                  <th className="text-right">Notional</th>
-                  <th className="text-right">Realized P&L</th>
+                  <th className="text-right">Price</th>
+                  <th className="text-right">Value</th>
+                  <th className="text-right">Closed Gain/Loss</th>
                   <th className="text-right">After</th>
                   <th>Timestamp</th>
-                  <th>Reference</th>
+                  <th>ID</th>
                 </tr>
               </thead>
               <tbody>

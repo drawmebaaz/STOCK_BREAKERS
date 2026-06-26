@@ -268,12 +268,3 @@ npm run audit:prod
 cd ml-service
 python -m compileall main.py
 ```
-
-## Production Notes
-
-- Never commit real `.env` files or database credentials.
-- Rotate sample secrets before any hosted deployment.
-- Use managed MongoDB with network allowlisting and backups for production.
-- Keep `CLIENT_URL` and `CORS_ORIGINS` restricted to real domains.
-- Use HTTPS and `TRUST_PROXY=true` behind a trusted reverse proxy.
-- The market data and sentiment signals are simulated for education; do not present them as real financial predictions.

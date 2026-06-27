@@ -24,9 +24,13 @@ let liveStocks = STOCKS.map((stock) => ({ ...stock }));
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const round = (value, digits = 2) => Number(value.toFixed(digits));
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 
 const hashTicker = (ticker) =>
   ticker.split("").reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) >>> 0, 2166136261);
+
+const demoTokenFor = (email) => `demo-static-token-${hashTicker(email).toString(36)}`;
+const userIdFor = (email) => `demo-user-${hashTicker(email).toString(36)}`;
 
 const seededRandom = (seed) => {
   let state = seed >>> 0;
@@ -73,11 +77,11 @@ const defaultTransactions = () => {
   ];
 };
 
-const defaultState = () => ({
-  token: "demo-static-token",
+const seededDemoAccount = () => ({
+  token: demoTokenFor(DEMO_EMAIL),
   password: DEMO_PASSWORD,
   user: {
-    id: "demo-user",
+    id: userIdFor(DEMO_EMAIL),
     name: "Demo Trader",
     email: DEMO_EMAIL,
     cashBalance: 43240.2,
@@ -92,17 +96,115 @@ const defaultState = () => ({
   transactions: defaultTransactions(),
 });
 
-const loadState = () => {
+const emptyAccount = ({ name, email, password }) => {
+  const safeEmail = normalizeEmail(email);
+
+  return {
+    token: demoTokenFor(safeEmail),
+    password,
+    user: {
+      id: userIdFor(safeEmail),
+      name: name || "Practice Trader",
+      email: safeEmail,
+      cashBalance: 50000,
+      watchlist: [],
+    },
+    holdings: [],
+    transactions: [],
+  };
+};
+
+const defaultStore = () => ({
+  activeEmail: DEMO_EMAIL,
+  accounts: {
+    [DEMO_EMAIL]: seededDemoAccount(),
+  },
+});
+
+const defaultState = () => seededDemoAccount();
+
+const accountFromLegacyState = (state) => {
+  const fallback = seededDemoAccount();
+  const user = state?.user || fallback.user;
+  const email = normalizeEmail(user.email || DEMO_EMAIL);
+
+  return {
+    ...fallback,
+    ...state,
+    token: demoTokenFor(email),
+    password: state?.password || (email === DEMO_EMAIL ? DEMO_PASSWORD : ""),
+    user: {
+      ...fallback.user,
+      ...user,
+      id: user.id || userIdFor(email),
+      email,
+    },
+    holdings: Array.isArray(state?.holdings) ? state.holdings : [],
+    transactions: Array.isArray(state?.transactions) ? state.transactions : [],
+  };
+};
+
+const normalizeStore = (rawState) => {
+  if (!rawState || typeof rawState !== "object") return defaultStore();
+
+  if (!rawState.accounts) {
+    const account = accountFromLegacyState(rawState);
+    return {
+      activeEmail: account.user.email,
+      accounts: {
+        [DEMO_EMAIL]: seededDemoAccount(),
+        [account.user.email]: account,
+      },
+    };
+  }
+
+  const accounts = Object.entries(rawState.accounts).reduce((acc, [email, account]) => {
+    const normalized = accountFromLegacyState(account);
+    acc[normalizeEmail(email || normalized.user.email)] = normalized;
+    return acc;
+  }, {});
+
+  accounts[DEMO_EMAIL] = accounts[DEMO_EMAIL] || seededDemoAccount();
+
+  const activeEmail = normalizeEmail(rawState.activeEmail);
+  return {
+    activeEmail: accounts[activeEmail] ? activeEmail : DEMO_EMAIL,
+    accounts,
+  };
+};
+
+const loadStore = () => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : defaultState();
+    const store = normalizeStore(raw ? JSON.parse(raw) : null);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    return store;
   } catch {
-    return defaultState();
+    const store = defaultStore();
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    return store;
   }
 };
 
+const saveStore = (store) => {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  return store;
+};
+
+const loadState = () => {
+  const store = loadStore();
+  return store.accounts[store.activeEmail] || store.accounts[DEMO_EMAIL] || defaultState();
+};
+
 const saveState = (state) => {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const store = loadStore();
+  const email = normalizeEmail(state.user.email);
+  state.user.email = email;
+  state.user.id = state.user.id || userIdFor(email);
+  state.token = state.token || demoTokenFor(email);
+  store.activeEmail = email;
+  store.accounts[email] = state;
+  saveStore(store);
   return state;
 };
 
@@ -382,21 +484,38 @@ const handleGet = (url) => {
 
 const handlePost = (url, body = {}) => {
   if (url === "/auth/login") {
-    const state = loadState();
-    const email = String(body.email || "").trim().toLowerCase();
-    if (email !== state.user.email || body.password !== state.password) {
+    const store = loadStore();
+    const email = normalizeEmail(body.email);
+    const account = store.accounts[email];
+
+    if (!account || body.password !== account.password) {
       return fail(401, "Invalid credentials");
     }
-    return respond({ token: state.token, user: state.user });
+
+    store.activeEmail = email;
+    saveStore(store);
+    return respond({ token: account.token, user: account.user });
   }
 
   if (url === "/auth/register") {
-    const nextState = defaultState();
-    nextState.user.name = body.name || "Demo Trader";
-    nextState.user.email = String(body.email || DEMO_EMAIL).trim().toLowerCase();
-    nextState.password = body.password || DEMO_PASSWORD;
-    saveState(nextState);
-    return respond({ token: nextState.token, user: nextState.user });
+    const store = loadStore();
+    const email = normalizeEmail(body.email);
+    const password = String(body.password || "");
+
+    if (!email) return fail(400, "Email is required");
+    if (password.length < 8) return fail(400, "Password must be at least 8 characters");
+    if (store.accounts[email]) return fail(409, "Email already in use");
+
+    const account = emptyAccount({
+      name: body.name || "Practice Trader",
+      email,
+      password,
+    });
+
+    store.activeEmail = email;
+    store.accounts[email] = account;
+    saveStore(store);
+    return respond({ token: account.token, user: account.user });
   }
 
   if (url === "/watchlist/add") return respond(updateWatchlist(String(body.ticker || "").toUpperCase(), "add"));

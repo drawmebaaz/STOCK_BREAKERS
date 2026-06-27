@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { useAuthStore } from "../stores/index.js";
 
@@ -66,6 +67,38 @@ function AuthCard({ title, subtitle, children }) {
   );
 }
 
+function PasswordField({ label, value, onChange, placeholder, autoComplete, minLength }) {
+  const [visible, setVisible] = useState(false);
+  const Icon = visible ? EyeOff : Eye;
+
+  return (
+    <div>
+      <label className="stat-label mb-1.5 block">{label}</label>
+      <div className="relative">
+        <input
+          className="input pr-11"
+          type={visible ? "text" : "password"}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          value={value}
+          onChange={onChange}
+          minLength={minLength}
+          required
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((current) => !current)}
+          className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-100"
+          aria-label={visible ? "Hide password" : "Show password"}
+          title={visible ? "Hide password" : "Show password"}
+        >
+          <Icon size={16} strokeWidth={1.8} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -106,18 +139,13 @@ export function LoginPage() {
             required
           />
         </div>
-        <div>
-          <label className="stat-label mb-1.5 block">Password</label>
-          <input
-            className="input"
-            type="password"
-            placeholder="Enter password"
-            autoComplete="current-password"
-            value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value })}
-            required
-          />
-        </div>
+        <PasswordField
+          label="Password"
+          placeholder="Enter password"
+          autoComplete="current-password"
+          value={form.password}
+          onChange={(event) => setForm({ ...form, password: event.target.value })}
+        />
 
         {error && <p className="alert-error">{error}</p>}
 
@@ -187,19 +215,14 @@ export function RegisterPage() {
             required
           />
         </div>
-        <div>
-          <label className="stat-label mb-1.5 block">Password</label>
-          <input
-            className="input"
-            type="password"
-            placeholder="Minimum 8 characters"
-            autoComplete="new-password"
-            value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value })}
-            minLength={8}
-            required
-          />
-        </div>
+        <PasswordField
+          label="Password"
+          placeholder="Minimum 8 characters"
+          autoComplete="new-password"
+          value={form.password}
+          onChange={(event) => setForm({ ...form, password: event.target.value })}
+          minLength={8}
+        />
 
         {error && <p className="alert-error">{error}</p>}
 

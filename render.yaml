@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: stockbreakers-paper-lab
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.render
+    healthCheckPath: /api/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: STATIC_DIR
+        value: /app/client-dist
+      - key: ML_SERVICE_URL
+        value: http://127.0.0.1:8000
+      - key: CLIENT_URL
+        value: https://stockbreakers-paper-lab.onrender.com
+      - key: CORS_ORIGINS
+        value: https://stockbreakers-paper-lab.onrender.com
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: RATE_LIMIT_MAX
+        value: 250
+      - key: TRUST_PROXY
+        value: true
+      - key: LOG_FORMAT
+        value: combined
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGO_URI
+        sync: false

@@ -1,24 +1,26 @@
 import axios from "axios";
 import { io } from "socket.io-client";
 import { useAuthStore } from "../stores/index.js";
+import { createDemoApi, demoSocket } from "./demoApi.js";
 
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 const BASE = import.meta.env.VITE_API_URL || "/api";
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
   (typeof window !== "undefined" ? window.location.origin : "http://localhost:5000");
 
-export const api = axios.create({
+const realApi = axios.create({
   baseURL: BASE,
   timeout: 10000,
 });
 
-api.interceptors.request.use((config) => {
+realApi.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-api.interceptors.response.use(
+realApi.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) useAuthStore.getState().logout();
@@ -26,10 +28,12 @@ api.interceptors.response.use(
   }
 );
 
+export const api = DEMO_MODE ? createDemoApi() : realApi;
+
 export const apiErrorMessage = (err, fallback = "Something went wrong") =>
   err.response?.data?.error || err.response?.data?.detail || err.message || fallback;
 
-export const socket = io(SOCKET_URL, {
+export const socket = DEMO_MODE ? demoSocket : io(SOCKET_URL, {
   autoConnect: false,
   transports: ["websocket", "polling"],
 });

@@ -6,6 +6,14 @@ StockBreakers is a production-minded paper-trading simulator. It combines a clea
 
 ## Demo Access
 
+Live browser demo:
+
+```text
+https://drawmebaaz.github.io/STOCK_BREAKERS/
+```
+
+The hosted demo uses browser-stored sample data so it can run permanently on GitHub Pages without exposing database credentials.
+
 Docker app:
 
 ```text
@@ -24,6 +32,10 @@ Seed the demo account after the Docker stack is healthy:
 ```bash
 docker compose exec server npm run seed:demo
 ```
+
+Full app deployment:
+
+[Render free deployment guide](deploy/RENDER_FREE.md)
 
 ## Why This Project Stands Out
 
@@ -104,7 +116,7 @@ FastAPI Research Service
 - Frontend: React 18, Vite 8, Tailwind CSS, Zustand, Recharts, Lucide
 - Backend: Node.js 20+, Express, MongoDB, Mongoose, JWT, Socket.IO, Zod
 - Research service: FastAPI, Pydantic 2, NumPy, Uvicorn
-- Production/runtime: Docker Compose, Nginx, health checks, readiness checks
+- Runtime/deploy: Docker Compose, Nginx, Render blueprint, GitHub Pages demo, health checks, readiness checks
 
 ## Research Flow
 
@@ -202,6 +214,7 @@ CORS_ORIGINS=http://localhost:5173
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=250
 TRUST_PROXY=false
+STATIC_DIR=
 ```
 
 Frontend:
@@ -209,6 +222,8 @@ Frontend:
 ```text
 VITE_API_URL=http://localhost:5000/api
 VITE_SOCKET_URL=http://localhost:5000
+VITE_DEMO_MODE=false
+VITE_BASE_PATH=/
 ```
 
 Research service:
@@ -257,6 +272,11 @@ Ops:
 ```bash
 cd client
 npm run build
+```
+
+```bash
+cd client
+VITE_DEMO_MODE=true VITE_BASE_PATH=/STOCK_BREAKERS/ npm run build
 ```
 
 ```bash

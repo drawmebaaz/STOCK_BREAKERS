@@ -28,6 +28,7 @@ const schema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(250),
   LOG_FORMAT: z.enum(["dev", "combined", "common", "short", "tiny"]).default("dev"),
   TRUST_PROXY: z.preprocess(parseBoolean, z.boolean()).default(false),
+  STATIC_DIR: z.string().optional(),
 });
 
 const result = schema.safeParse(process.env);

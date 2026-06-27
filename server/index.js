@@ -1,5 +1,6 @@
 import express from "express";
 import http from "http";
+import path from "path";
 import { Server } from "socket.io";
 import cors from "cors";
 import mongoose from "mongoose";
@@ -73,6 +74,13 @@ app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
+
+if (env.STATIC_DIR) {
+  app.use(express.static(env.STATIC_DIR, { maxAge: env.isProduction ? "1h" : 0 }));
+  app.get(/^\/(?!api\/).*/, (_, res) => {
+    res.sendFile(path.join(env.STATIC_DIR, "index.html"));
+  });
+}
 
 app.use(notFound);
 app.use(errorHandler);

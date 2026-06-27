@@ -4,13 +4,9 @@ StockBreakers is a production-minded paper-trading simulator. It combines a clea
 
 > Educational paper-trading app only. StockBreakers does not provide financial advice and does not execute real trades.
 
+[Live Demo](https://drawmebaaz.github.io/STOCK_BREAKERS/)
+
 ## Demo Access
-
-Live browser demo:
-
-```text
-https://drawmebaaz.github.io/STOCK_BREAKERS/
-```
 
 The hosted demo uses browser-stored sample data so it can run permanently on GitHub Pages without exposing database credentials.
 

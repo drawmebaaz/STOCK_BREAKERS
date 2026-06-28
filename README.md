@@ -33,6 +33,13 @@ Full app deployment:
 
 [Render free deployment guide](deploy/RENDER_FREE.md)
 
+Optional Google sign-in:
+
+- Create a free Google OAuth Web Client ID in Google Cloud.
+- Add the same client ID as `GOOGLE_CLIENT_ID` for the backend and `VITE_GOOGLE_CLIENT_ID` for the frontend.
+- Add your app URL to Google OAuth's authorized JavaScript origins.
+- The Google button stays hidden when `VITE_GOOGLE_CLIENT_ID` is empty, so email/password auth keeps working normally.
+
 ## Why This Project Stands Out
 
 - Full-stack trading simulator with real authentication, portfolio state, watchlists, trade flow, and trade history.
@@ -40,7 +47,7 @@ Full app deployment:
 - Backend-owned rolling price history keeps the research screen consistent across refreshes and devices.
 - Research screen gives a simple forecast range, risk level, plain-language notes, and stock ideas without overloading users with acronyms.
 - Secure, intentional trading UX with trade review, max affordable/sellable quantity, cash usage, stale-price protection, and virtual-funds clarity.
-- Production hardening includes JWT auth, Zod validation, Helmet, CORS configuration, rate limiting, health/readiness probes, Dockerized services, and Nginx frontend hosting.
+- Production hardening includes JWT auth, optional Google sign-in, Zod validation, Helmet, CORS configuration, rate limiting, health/readiness probes, Dockerized services, and Nginx frontend hosting.
 
 ## Core Features
 
@@ -204,6 +211,7 @@ PORT=5000
 MONGO_URI=mongodb://localhost:27017/stockbreakers
 JWT_SECRET=replace-with-a-64-character-random-secret
 JWT_EXPIRES_IN=7d
+GOOGLE_CLIENT_ID=
 ML_SERVICE_URL=http://localhost:8000
 CLIENT_URL=http://localhost:5173
 CORS_ORIGINS=http://localhost:5173
@@ -220,6 +228,7 @@ VITE_API_URL=http://localhost:5000/api
 VITE_SOCKET_URL=http://localhost:5000
 VITE_DEMO_MODE=false
 VITE_BASE_PATH=/
+VITE_GOOGLE_CLIENT_ID=
 ```
 
 Research service:

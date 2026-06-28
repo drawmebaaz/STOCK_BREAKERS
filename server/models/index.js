@@ -11,7 +11,9 @@ const UserSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
-    password: { type: String, required: true, select: false },
+    password: { type: String, select: false },
+    googleId: { type: String, trim: true, unique: true, sparse: true, select: false },
+    avatarUrl: { type: String, trim: true },
     cashBalance: { type: Number, default: 50000, min: 0 },
     watchlist: {
       type: [String],

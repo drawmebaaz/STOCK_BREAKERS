@@ -80,6 +80,7 @@ const defaultTransactions = () => {
 const seededDemoAccount = () => ({
   token: demoTokenFor(DEMO_EMAIL),
   password: DEMO_PASSWORD,
+  googleId: null,
   user: {
     id: userIdFor(DEMO_EMAIL),
     name: "Demo Trader",
@@ -102,6 +103,7 @@ const emptyAccount = ({ name, email, password }) => {
   return {
     token: demoTokenFor(safeEmail),
     password,
+    googleId: null,
     user: {
       id: userIdFor(safeEmail),
       name: name || "Practice Trader",
@@ -112,6 +114,19 @@ const emptyAccount = ({ name, email, password }) => {
     holdings: [],
     transactions: [],
   };
+};
+
+const decodeGoogleCredential = (credential) => {
+  try {
+    const payload = String(credential || "").split(".")[1];
+    if (!payload) return null;
+    const padded = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    const binary = (typeof window !== "undefined" && window.atob ? window.atob(padded) : globalThis.atob(padded));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
 };
 
 const defaultStore = () => ({
@@ -488,9 +503,11 @@ const handlePost = (url, body = {}) => {
     const email = normalizeEmail(body.email);
     const account = store.accounts[email];
 
-    if (!account || body.password !== account.password) {
+    if (!account) {
       return fail(401, "Invalid credentials");
     }
+    if (!account.password) return fail(401, "Use Google sign-in for this account");
+    if (body.password !== account.password) return fail(401, "Invalid credentials");
 
     store.activeEmail = email;
     saveStore(store);
@@ -511,6 +528,33 @@ const handlePost = (url, body = {}) => {
       email,
       password,
     });
+
+    store.activeEmail = email;
+    store.accounts[email] = account;
+    saveStore(store);
+    return respond({ token: account.token, user: account.user });
+  }
+
+  if (url === "/auth/google") {
+    const profile = decodeGoogleCredential(body.credential);
+    if (!profile?.email || !profile?.sub) return fail(401, "Google account could not be verified");
+    if (profile.email_verified === false) return fail(401, "Google email is not verified");
+
+    const store = loadStore();
+    const email = normalizeEmail(profile.email);
+    let account = store.accounts[email];
+
+    if (account) {
+      account.googleId = profile.sub;
+      account.user.name = account.user.name || profile.name || email.split("@")[0];
+    } else {
+      account = emptyAccount({
+        name: profile.name || email.split("@")[0],
+        email,
+        password: "",
+      });
+      account.googleId = profile.sub;
+    }
 
     store.activeEmail = email;
     store.accounts[email] = account;

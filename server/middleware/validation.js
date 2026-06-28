@@ -19,6 +19,10 @@ export const authLoginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+export const googleAuthSchema = z.object({
+  credential: z.string().min(20).max(10000),
+});
+
 export const orderSchema = z.object({
   ticker: tickerSchema,
   quantity: z.coerce.number().int().min(1).max(10000),

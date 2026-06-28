@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { api, apiErrorMessage } from "../utils/api.js";
@@ -18,6 +18,26 @@ const PROJECT_NOTES = [
     detail: "Educational simulator only. No real market orders or financial advice.",
   },
 ];
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+let googleScriptPromise;
+
+const loadGoogleScript = () => {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  if (googleScriptPromise) return googleScriptPromise;
+
+  googleScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Could not load Google sign-in"));
+    document.head.appendChild(script);
+  });
+
+  return googleScriptPromise;
+};
 
 function AuthCard({ title, subtitle, children }) {
   return (
@@ -99,6 +119,63 @@ function PasswordField({ label, value, onChange, placeholder, autoComplete, minL
   );
 }
 
+function GoogleAuthButton({ onCredential, disabled }) {
+  const buttonRef = useRef(null);
+  const onCredentialRef = useRef(onCredential);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    onCredentialRef.current = onCredential;
+  }, [onCredential]);
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return undefined;
+    let cancelled = false;
+
+    loadGoogleScript()
+      .then(() => {
+        if (cancelled || !buttonRef.current || !window.google?.accounts?.id) return;
+
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: ({ credential }) => {
+            if (credential) onCredentialRef.current(credential);
+          },
+        });
+
+        window.google.accounts.id.renderButton(buttonRef.current, {
+          theme: "outline",
+          size: "large",
+          type: "standard",
+          text: "continue_with",
+          shape: "rectangular",
+          width: Math.min(buttonRef.current.offsetWidth || 320, 400),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setError("Google sign-in could not be loaded.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!GOOGLE_CLIENT_ID) return null;
+
+  return (
+    <div className={disabled ? "pointer-events-none opacity-60" : ""}>
+      <div className="my-5 flex items-center gap-3">
+        <span className="h-px flex-1 bg-slate-800" />
+        <span className="text-xs font-medium uppercase tracking-[0.12em] text-slate-600">or</span>
+        <span className="h-px flex-1 bg-slate-800" />
+      </div>
+      <div ref={buttonRef} className="min-h-[42px] w-full" />
+      {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
+    </div>
+  );
+}
+
 export function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -116,6 +193,20 @@ export function LoginPage() {
       navigate("/");
     } catch (err) {
       setError(apiErrorMessage(err, "Login failed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async (credential) => {
+    setLoading(true);
+    setError("");
+    try {
+      const { data } = await api.post("/auth/google", { credential });
+      setAuth(data.user, data.token);
+      navigate("/");
+    } catch (err) {
+      setError(apiErrorMessage(err, "Google sign-in failed"));
     } finally {
       setLoading(false);
     }
@@ -154,6 +245,8 @@ export function LoginPage() {
         </button>
       </form>
 
+      <GoogleAuthButton onCredential={signInWithGoogle} disabled={loading} />
+
       <p className="mt-5 text-center text-sm text-slate-500">
         New here?{" "}
         <Link to="/register" className="font-medium text-slate-200 hover:text-white">
@@ -181,6 +274,20 @@ export function RegisterPage() {
       navigate("/");
     } catch (err) {
       setError(apiErrorMessage(err, "Registration failed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async (credential) => {
+    setLoading(true);
+    setError("");
+    try {
+      const { data } = await api.post("/auth/google", { credential });
+      setAuth(data.user, data.token);
+      navigate("/");
+    } catch (err) {
+      setError(apiErrorMessage(err, "Google sign-in failed"));
     } finally {
       setLoading(false);
     }
@@ -230,6 +337,8 @@ export function RegisterPage() {
           {loading ? "Creating..." : "Create account"}
         </button>
       </form>
+
+      <GoogleAuthButton onCredential={signInWithGoogle} disabled={loading} />
 
       <p className="mt-5 text-center text-sm text-slate-500">
         Already registered?{" "}

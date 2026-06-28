@@ -9,6 +9,19 @@ const parseBoolean = (value) => {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 };
 
+const emptyToUndefined = (value) => {
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  return value;
+};
+
+const logFormats = ["dev", "combined", "common", "short", "tiny"];
+const normalizeLogFormat = (value) => {
+  const normalized = emptyToUndefined(value);
+  if (typeof normalized !== "string") return normalized;
+  const trimmed = normalized.trim();
+  return logFormats.includes(trimmed) ? trimmed : undefined;
+};
+
 const splitOrigins = (value) =>
   String(value || "")
     .split(",")
@@ -21,14 +34,15 @@ const schema = z.object({
   MONGO_URI: z.string().min(1).default("mongodb://localhost:27017/stockbreakers"),
   JWT_SECRET: z.string().optional(),
   JWT_EXPIRES_IN: z.string().default("7d"),
+  GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   ML_SERVICE_URL: z.string().url().default("http://localhost:8000"),
   CLIENT_URL: z.string().url().default("http://localhost:5173"),
   CORS_ORIGINS: z.string().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(250),
-  LOG_FORMAT: z.enum(["dev", "combined", "common", "short", "tiny"]).default("dev"),
+  LOG_FORMAT: z.preprocess(normalizeLogFormat, z.enum(logFormats).default("dev")),
   TRUST_PROXY: z.preprocess(parseBoolean, z.boolean()).default(false),
-  STATIC_DIR: z.string().optional(),
+  STATIC_DIR: z.preprocess(emptyToUndefined, z.string().optional()),
 });
 
 const result = schema.safeParse(process.env);

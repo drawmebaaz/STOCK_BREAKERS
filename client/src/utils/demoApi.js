@@ -66,6 +66,32 @@ const priceHistory = STOCKS.reduce((history, stock) => {
   return history;
 }, {});
 
+const withQuote = (stock) => {
+  const history = priceHistory[stock.ticker] || [stock.price];
+  const spread = Math.max(0.01, stock.price * (stock.ticker === "COIN" || stock.ticker === "PLTR" ? 0.003 : 0.0012));
+  const volume = Math.round(400000 + hashTicker(`${stock.ticker}-${history.length}`) % 900000);
+  return {
+    ...stock,
+    mid: stock.price,
+    lastPrice: stock.price,
+    bid: round(stock.price - spread / 2, 4),
+    ask: round(stock.price + spread / 2, 4),
+    spread: round(spread, 4),
+    volume,
+    dayOpen: history.at(-30) || history[0] || stock.price,
+    dayHigh: round(Math.max(...history.slice(-90))),
+    dayLow: round(Math.min(...history.slice(-90))),
+    dayVolume: volume * 90,
+    marketStatus: "OPEN",
+    regime: "NORMAL",
+    liquidityScore: stock.ticker === "COIN" || stock.ticker === "PLTR" ? 0.76 : 0.9,
+    averageVolume: volume,
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+liveStocks = liveStocks.map(withQuote);
+
 const defaultTransactions = () => {
   const now = Date.now();
   return [
@@ -77,10 +103,19 @@ const defaultTransactions = () => {
   ];
 };
 
+const defaultRiskSettings = () => ({
+  maxRiskPerTradePercent: 2,
+  maxPortfolioRiskPercent: 6,
+  maxTickerExposurePercent: 25,
+  maxSectorExposurePercent: 40,
+  defaultStopLossPercent: 5,
+  requireTradePlan: true,
+  warnOnOversizing: true,
+});
+
 const seededDemoAccount = () => ({
   token: demoTokenFor(DEMO_EMAIL),
   password: DEMO_PASSWORD,
-  googleId: null,
   user: {
     id: userIdFor(DEMO_EMAIL),
     name: "Demo Trader",
@@ -95,6 +130,8 @@ const seededDemoAccount = () => ({
     { ticker: "JPM", quantity: 8, avgCost: 192.1, totalInvested: 1536.8 },
   ],
   transactions: defaultTransactions(),
+  orders: [],
+  riskSettings: defaultRiskSettings(),
 });
 
 const emptyAccount = ({ name, email, password }) => {
@@ -103,7 +140,6 @@ const emptyAccount = ({ name, email, password }) => {
   return {
     token: demoTokenFor(safeEmail),
     password,
-    googleId: null,
     user: {
       id: userIdFor(safeEmail),
       name: name || "Practice Trader",
@@ -113,20 +149,9 @@ const emptyAccount = ({ name, email, password }) => {
     },
     holdings: [],
     transactions: [],
+    orders: [],
+    riskSettings: defaultRiskSettings(),
   };
-};
-
-const decodeGoogleCredential = (credential) => {
-  try {
-    const payload = String(credential || "").split(".")[1];
-    if (!payload) return null;
-    const padded = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
-    const binary = (typeof window !== "undefined" && window.atob ? window.atob(padded) : globalThis.atob(padded));
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes));
-  } catch {
-    return null;
-  }
 };
 
 const defaultStore = () => ({
@@ -156,6 +181,8 @@ const accountFromLegacyState = (state) => {
     },
     holdings: Array.isArray(state?.holdings) ? state.holdings : [],
     transactions: Array.isArray(state?.transactions) ? state.transactions : [],
+    orders: Array.isArray(state?.orders) ? state.orders : [],
+    riskSettings: state?.riskSettings || defaultRiskSettings(),
   };
 };
 
@@ -273,16 +300,21 @@ const portfolioSummary = (state) => {
   };
 };
 
-const addTransaction = (state, type, ticker, quantity, price, total) => {
-  state.transactions.unshift({
+const addTransaction = (state, type, ticker, quantity, price, total, extra = {}) => {
+  const transaction = {
     _id: `demo-txn-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     type,
     ticker,
     quantity,
     price,
     total,
+    filledQuantity: quantity,
+    fillPrice: price,
     createdAt: new Date().toISOString(),
-  });
+    ...extra,
+  };
+  state.transactions.unshift(transaction);
+  return transaction;
 };
 
 const updateWatchlist = (ticker, action) => {
@@ -338,6 +370,185 @@ const handleTrade = (mode, body) => {
   addTransaction(state, "sell", ticker, quantity, stock.price, total);
   saveState(state);
   return respond({ success: true, cashBalance: state.user.cashBalance });
+};
+
+const orderStatusFromLimit = ({ side, type, limitPrice, stock }) => {
+  if (type !== "LIMIT") return "FILL";
+  if (side === "BUY") return stock.ask <= Number(limitPrice) ? "FILL" : "PENDING";
+  return stock.bid >= Number(limitPrice) ? "FILL" : "PENDING";
+};
+
+const handleOrder = (body = {}) => {
+  const state = loadState();
+  const ticker = String(body.ticker || "").toUpperCase();
+  const side = String(body.side || "BUY").toUpperCase();
+  const type = String(body.type || "MARKET").toUpperCase();
+  const quantity = Number(body.quantity || 0);
+  const idempotencyKey = String(body.idempotencyKey || "");
+  const stock = liveStocks.find((item) => item.ticker === ticker);
+
+  if (!stock) return fail(404, "Stock not found");
+  if (!Number.isInteger(quantity) || quantity < 1) return fail(400, "Enter a valid quantity");
+  if (!idempotencyKey) return fail(400, "Order key is required");
+
+  const existing = state.orders.find((order) => order.idempotencyKey === idempotencyKey);
+  if (existing) return respond({ success: existing.status !== "REJECTED", order: existing, idempotent: true });
+
+  const limitPrice = type === "LIMIT" ? Number(body.limitPrice || 0) : null;
+  if (type === "LIMIT" && !limitPrice) return fail(400, "Limit price is required");
+
+  const fillCheck = orderStatusFromLimit({ side, type, limitPrice, stock });
+  const order = {
+    _id: `demo-order-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    ticker,
+    side,
+    type,
+    quantity,
+    limitPrice,
+    status: fillCheck === "FILL" ? "FILLED" : "PENDING",
+    requestedPrice: stock.mid,
+    requestedBid: stock.bid,
+    requestedAsk: stock.ask,
+    avgFillPrice: 0,
+    filledQuantity: 0,
+    remainingQuantity: quantity,
+    estimatedSlippage: round(stock.price * (1 - stock.liquidityScore) * 0.001, 4),
+    actualSlippage: 0,
+    spreadPaid: 0,
+    rejectionReason: null,
+    idempotencyKey,
+    tradePlanId: body.tradePlan ? `demo-plan-${Date.now()}` : null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    canCancel: fillCheck !== "FILL",
+  };
+
+  if (fillCheck !== "FILL") {
+    state.orders.unshift(order);
+    saveState(state);
+    return respond({ success: true, order, snapshot: portfolioSummary(state) });
+  }
+
+  const slippage = Math.abs(order.estimatedSlippage);
+  const fillPrice = side === "BUY" ? round(stock.ask + slippage, 4) : round(stock.bid - slippage, 4);
+  const total = round(fillPrice * quantity);
+  const holding = state.holdings.find((item) => item.ticker === ticker);
+
+  if (side === "BUY") {
+    if (state.user.cashBalance < total) {
+      order.status = "REJECTED";
+      order.rejectionReason = "Insufficient virtual cash for this order";
+      state.orders.unshift(order);
+      saveState(state);
+      return respond({ success: false, order, snapshot: portfolioSummary(state) });
+    }
+    state.user.cashBalance = round(state.user.cashBalance - total);
+    if (holding) {
+      const nextQuantity = holding.quantity + quantity;
+      holding.avgCost = round((holding.totalInvested + total) / nextQuantity, 4);
+      holding.quantity = nextQuantity;
+      holding.totalInvested = round(holding.totalInvested + total);
+    } else {
+      state.holdings.push({ ticker, quantity, avgCost: fillPrice, totalInvested: total });
+    }
+  } else {
+    if (!holding || holding.quantity < quantity) {
+      order.status = "REJECTED";
+      order.rejectionReason = "Not enough shares available to sell";
+      state.orders.unshift(order);
+      saveState(state);
+      return respond({ success: false, order, snapshot: portfolioSummary(state) });
+    }
+    state.user.cashBalance = round(state.user.cashBalance + total);
+    const realizedPnl = round((fillPrice - holding.avgCost) * quantity);
+    holding.quantity -= quantity;
+    holding.totalInvested = round(holding.totalInvested - holding.avgCost * quantity);
+    if (holding.quantity === 0) state.holdings = state.holdings.filter((item) => item.ticker !== ticker);
+    order.realizedPnl = realizedPnl;
+  }
+
+  order.status = "FILLED";
+  order.filledQuantity = quantity;
+  order.remainingQuantity = 0;
+  order.avgFillPrice = fillPrice;
+  order.actualSlippage = round(slippage * quantity, 4);
+  order.spreadPaid = round(stock.spread * quantity, 4);
+  order.filledAt = new Date().toISOString();
+  order.canCancel = false;
+  const transaction = addTransaction(state, side.toLowerCase(), ticker, quantity, fillPrice, total, {
+    orderId: order._id,
+    side,
+    orderType: type,
+    bid: stock.bid,
+    ask: stock.ask,
+    slippage: order.actualSlippage,
+    spreadPaid: order.spreadPaid,
+    realizedPnl: side === "SELL" ? order.realizedPnl : null,
+    positionAfter: side === "BUY" ? (holding?.quantity || quantity) : Math.max(0, holding?.quantity || 0),
+  });
+  state.orders.unshift(order);
+  saveState(state);
+  return respond({ success: true, order, transaction, snapshot: portfolioSummary(state) });
+};
+
+const cancelDemoOrder = (orderId) => {
+  const state = loadState();
+  const order = state.orders.find((item) => item._id === orderId);
+  if (!order) return fail(404, "Order not found");
+  if (!["PENDING", "PARTIALLY_FILLED"].includes(order.status)) return fail(400, "Only pending orders can be cancelled");
+  order.status = "CANCELLED";
+  order.cancelledAt = new Date().toISOString();
+  order.canCancel = false;
+  saveState(state);
+  return respond({ success: true, order });
+};
+
+const portfolioAnalytics = (state) => {
+  const holdings = enrichHoldings(state.holdings);
+  const summary = portfolioSummary(state);
+  const sells = state.transactions.filter((txn) => txn.type === "sell");
+  const realizedPnl = sells.reduce((sum, txn) => sum + Number(txn.realizedPnl || 0), 0);
+  const wins = sells.filter((txn) => Number(txn.realizedPnl || 0) > 0);
+  const losses = sells.filter((txn) => Number(txn.realizedPnl || 0) < 0);
+  const sectorExposure = holdings.reduce((acc, holding) => {
+    const sector = liveStocks.find((stock) => stock.ticker === holding.ticker)?.sector || "Unclassified";
+    acc[sector] = acc[sector] || { sector, value: 0 };
+    acc[sector].value += holding.currentValue;
+    return acc;
+  }, {});
+
+  return {
+    totalEquity: summary.totalValue,
+    cash: summary.cash,
+    marketValue: summary.stockValue,
+    realizedPnl: round(realizedPnl),
+    unrealizedPnl: summary.pnl,
+    totalPnl: round(realizedPnl + summary.pnl),
+    winRate: sells.length ? round((wins.length / sells.length) * 100) : 0,
+    averageWin: wins.length ? round(wins.reduce((sum, txn) => sum + txn.realizedPnl, 0) / wins.length) : 0,
+    averageLoss: losses.length ? round(losses.reduce((sum, txn) => sum + txn.realizedPnl, 0) / losses.length) : 0,
+    profitFactor: 0,
+    maxDrawdown: 0,
+    openRiskAmount: 0,
+    openRiskPercent: 0,
+    averageRMultiple: 0,
+    tickerConcentration: holdings.map((holding) => ({
+      ticker: holding.ticker,
+      value: holding.currentValue,
+      weight: summary.totalValue ? round((holding.currentValue / summary.totalValue) * 100) : 0,
+      warning: false,
+    })),
+    sectorExposure: Object.values(sectorExposure).map((item) => ({
+      ...item,
+      value: round(item.value),
+      weight: summary.totalValue ? round((item.value / summary.totalValue) * 100) : 0,
+      warning: false,
+    })),
+    totalTrades: state.transactions.length,
+    plannedTradesCount: state.orders.filter((order) => order.tradePlanId).length,
+    followedPlanRate: 0,
+    riskWarnings: [],
+  };
 };
 
 const percentile = (values, pct) => {
@@ -467,7 +678,8 @@ const suggestions = () => {
 };
 
 const handleGet = (url) => {
-  const [path] = url.split("?");
+  const [path, queryString = ""] = url.split("?");
+  const query = new URLSearchParams(queryString);
   const state = loadState();
 
   if (path === "/stocks") return respond({ stocks: liveStocks });
@@ -479,7 +691,15 @@ const handleGet = (url) => {
   if (path === "/auth/me") return respond({ user: state.user });
   if (path === "/portfolio") return respond({ holdings: enrichHoldings(state.holdings) });
   if (path === "/portfolio/summary") return respond(portfolioSummary(state));
+  if (path === "/portfolio/analytics") return respond(portfolioAnalytics(state));
   if (path === "/transactions") return respond({ transactions: state.transactions });
+  if (path === "/orders") {
+    const status = query.get("status");
+    const orders = status ? state.orders.filter((order) => order.status === status) : state.orders;
+    return respond({ orders, page: 1, limit: 50 });
+  }
+  if (path === "/risk/settings") return respond({ settings: state.riskSettings || defaultRiskSettings() });
+  if (path === "/market/status") return respond({ market: { status: "OPEN", label: "Open simulated session", regime: "NORMAL" } });
   if (path.startsWith("/ai/history/")) {
     const ticker = path.split("/").at(-1).toUpperCase();
     const prices = priceHistory[ticker];
@@ -493,6 +713,37 @@ const handleGet = (url) => {
     });
   }
   if (path === "/ai/suggestions") return suggestions();
+  if (path === "/discipline/summary") {
+    const filled = state.orders.filter((order) => ["FILLED", "PARTIALLY_FILLED"].includes(order.status));
+    const planned = filled.filter((order) => order.tradePlanId).length;
+    const unplanned = Math.max(0, filled.length - planned);
+    const score = Math.max(0, 100 - unplanned * 10);
+    return respond({
+      totalTrades: filled.length,
+      plannedTrades: planned,
+      unplannedTrades: unplanned,
+      planAdherenceRate: filled.length ? round((planned / filled.length) * 100) : 0,
+      tradesWithStopLoss: planned,
+      tradesWithTarget: planned,
+      averageRewardRisk: 0,
+      averageRMultiple: 0,
+      oversizedTrades: 0,
+      overSizedTrades: 0,
+      revengeTradeSignals: 0,
+      earlyExitCount: 0,
+      lateExitCount: 0,
+      noThesisTrades: unplanned,
+      biggestBehaviorLeak: unplanned ? "Planning gap" : "No clear leak yet",
+      weeklyDisciplineScore: score,
+      improvementTrend: "Demo mode keeps this simple.",
+      recommendationCards: [
+        { id: "demo-1", text: "Use the risk plan on each practice order so your history becomes useful." },
+        { id: "demo-2", text: "Add stop-loss and target prices before taking larger simulated positions." },
+      ],
+      recentReviews: [],
+      setupPerformance: [],
+    });
+  }
 
   return fail(404, "Demo route not found");
 };
@@ -506,7 +757,7 @@ const handlePost = (url, body = {}) => {
     if (!account) {
       return fail(401, "Invalid credentials");
     }
-    if (!account.password) return fail(401, "Use Google sign-in for this account");
+    if (!account.password) return fail(401, "Invalid credentials");
     if (body.password !== account.password) return fail(401, "Invalid credentials");
 
     store.activeEmail = email;
@@ -535,40 +786,36 @@ const handlePost = (url, body = {}) => {
     return respond({ token: account.token, user: account.user });
   }
 
-  if (url === "/auth/google") {
-    const profile = decodeGoogleCredential(body.credential);
-    if (!profile?.email || !profile?.sub) return fail(401, "Google account could not be verified");
-    if (profile.email_verified === false) return fail(401, "Google email is not verified");
-
-    const store = loadStore();
-    const email = normalizeEmail(profile.email);
-    let account = store.accounts[email];
-
-    if (account) {
-      account.googleId = profile.sub;
-      account.user.name = account.user.name || profile.name || email.split("@")[0];
-    } else {
-      account = emptyAccount({
-        name: profile.name || email.split("@")[0],
-        email,
-        password: "",
-      });
-      account.googleId = profile.sub;
-    }
-
-    store.activeEmail = email;
-    store.accounts[email] = account;
-    saveStore(store);
-    return respond({ token: account.token, user: account.user });
-  }
-
   if (url === "/watchlist/add") return respond(updateWatchlist(String(body.ticker || "").toUpperCase(), "add"));
   if (url === "/watchlist/remove") return respond(updateWatchlist(String(body.ticker || "").toUpperCase(), "remove"));
   if (url === "/trade/buy") return handleTrade("buy", body);
   if (url === "/trade/sell") return handleTrade("sell", body);
+  if (url === "/orders") return handleOrder(body);
+  if (url.startsWith("/orders/") && url.endsWith("/cancel")) {
+    return cancelDemoOrder(url.split("/")[2]);
+  }
   if (url === "/ai/predict") return predict(body);
+  if (url === "/ai/scenario") return predict(body).then((res) => ({
+    data: {
+      ...res.data,
+      status: "ok",
+      scenario: {
+        worstCase: res.data.stats.p5_final,
+        baseCase: res.data.stats.median_final,
+        bestCase: res.data.stats.p95_final,
+        gainProbability: res.data.stats.prob_gain,
+        plainEnglishRiskSummary: "Demo scenario based on browser-stored simulated price history.",
+      },
+    },
+  }));
   if (url === "/ai/sentiment") return sentiment(body);
   if (url === "/ai/risk") return risk(body);
+  if (url === "/risk/settings") {
+    const state = loadState();
+    state.riskSettings = { ...(state.riskSettings || defaultRiskSettings()), ...body };
+    saveState(state);
+    return respond({ settings: state.riskSettings });
+  }
 
   return fail(404, "Demo route not found");
 };
@@ -590,7 +837,7 @@ const stepPrices = () => {
     const change = round(((newPrice - stock.price) / stock.price) * 100);
     const history = priceHistory[stock.ticker] || [stock.price];
     priceHistory[stock.ticker] = [...history, newPrice].slice(-240);
-    return { ...stock, price: newPrice, change };
+    return withQuote({ ...stock, price: newPrice, change });
   });
   emit("price_update", clone(liveStocks));
 };

@@ -60,6 +60,7 @@ function riskNoteFor(holding) {
 
 export default function PortfolioPage() {
   const { holdings, summary, loading, error } = usePortfolioStore();
+  const analytics = usePortfolioStore((s) => s.analytics);
   const { refresh } = usePortfolio();
   const priceMap = usePriceStore((s) => s.priceMap);
   const stocks = usePriceStore((s) => s.stocks);
@@ -144,6 +145,32 @@ export default function PortfolioPage() {
         </div>
       )}
 
+      {analytics && (
+        <>
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+            <Metric
+              label="Closed gain/loss"
+              value={`${analytics.realizedPnl >= 0 ? "+" : ""}${currency(analytics.realizedPnl)}`}
+              tone={analytics.realizedPnl >= 0 ? "positive" : "negative"}
+            />
+            <Metric
+              label="Open gain/loss"
+              value={`${analytics.unrealizedPnl >= 0 ? "+" : ""}${currency(analytics.unrealizedPnl)}`}
+              tone={analytics.unrealizedPnl >= 0 ? "positive" : "negative"}
+            />
+            <Metric label="Win rate" value={`${Number(analytics.winRate || 0).toFixed(0)}%`} />
+            <Metric label="Avg reward/risk result" value={analytics.averageRMultiple ? `${analytics.averageRMultiple.toFixed(2)}x` : "--"} />
+            <Metric label="Biggest drop" value={`${Number(analytics.maxDrawdown || 0).toFixed(1)}%`} tone={analytics.maxDrawdown < -8 ? "warning" : "neutral"} />
+            <Metric label="Open planned risk" value={currency(analytics.openRiskAmount || 0)} sub={`${Number(analytics.openRiskPercent || 0).toFixed(1)}% of equity`} />
+          </div>
+          {analytics.riskWarnings?.length > 0 && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              {analytics.riskWarnings[0]}
+            </div>
+          )}
+        </>
+      )}
+
       <div className="grid gap-6 2xl:grid-cols-[360px_1fr]">
         <aside className="space-y-4">
           <div className="panel p-4">
@@ -218,6 +245,25 @@ export default function PortfolioPage() {
               </div>
             </div>
           </div>
+
+          {analytics?.sectorExposure?.length > 0 && (
+            <div className="panel p-4">
+              <h2 className="section-title">Sector Exposure</h2>
+              <div className="mt-4 space-y-3">
+                {analytics.sectorExposure.slice(0, 5).map((item) => (
+                  <div key={item.sector} className="space-y-2">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-slate-400">{item.sector}</span>
+                      <span className={item.warning ? "mono text-amber-300" : "mono text-slate-200"}>{item.weight.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-900">
+                      <div className="h-full rounded-full bg-[#7ea4ce]" style={{ width: `${Math.min(item.weight, 100)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </aside>
 
         <div className="panel overflow-hidden">

@@ -1,6 +1,6 @@
 # StockBreakers
 
-StockBreakers is a production-minded paper-trading simulator. It combines a clean React workspace, authenticated portfolio accounting, real-time practice prices, virtual buy/sell flows, trade history, and a simple research screen for comparing possible price ranges before a practice trade.
+StockBreakers is a risk-first paper-trading simulator. It combines a clean React workspace, authenticated portfolio accounting, real-time practice prices, market and limit orders, pending order handling, virtual fills, trade history, scenario analysis, and discipline review.
 
 > Educational paper-trading app only. StockBreakers does not provide financial advice and does not execute real trades.
 
@@ -33,21 +33,16 @@ Full app deployment:
 
 [Render free deployment guide](deploy/RENDER_FREE.md)
 
-Optional Google sign-in:
+## What It Does
 
-- Create a free Google OAuth Web Client ID in Google Cloud.
-- Add the same client ID as `GOOGLE_CLIENT_ID` for the backend and `VITE_GOOGLE_CLIENT_ID` for the frontend.
-- Add your app URL to Google OAuth's authorized JavaScript origins.
-- The Google button stays hidden when `VITE_GOOGLE_CLIENT_ID` is empty, so email/password auth keeps working normally.
-
-## Why This Project Stands Out
-
-- Full-stack trading simulator with real authentication, portfolio state, watchlists, trade flow, and trade history.
-- Microservice architecture using React, Express/MongoDB, Socket.IO, FastAPI/NumPy, and Docker Compose.
-- Backend-owned rolling price history keeps the research screen consistent across refreshes and devices.
-- Research screen gives a simple forecast range, risk level, plain-language notes, and stock ideas without overloading users with acronyms.
-- Secure, intentional trading UX with trade review, max affordable/sellable quantity, cash usage, stale-price protection, and virtual-funds clarity.
-- Production hardening includes JWT auth, optional Google sign-in, Zod validation, Helmet, CORS configuration, rate limiting, health/readiness probes, Dockerized services, and Nginx frontend hosting.
+- Keeps each user account separate with its own virtual cash, watchlist, holdings, orders, and history.
+- Streams simulated market quotes with bid, ask, spread, volume, day range, and rolling candle history.
+- Supports market and limit orders with filled, pending, partially filled, cancelled, rejected, and expired states.
+- Records executed fills separately from orders so pending and cancelled orders are not mixed with completed trades.
+- Helps users plan trades with thesis, stop-loss, target, confidence, and position-size checks.
+- Shows portfolio analytics such as closed gain/loss, open gain/loss, win rate, drawdown, concentration, and open planned risk.
+- Frames analytics as scenario analysis using simulated in-app history, not real-market prediction.
+- Adds a discipline page that highlights planning gaps, missing stop-losses, oversized trades, and review habits.
 
 ## Core Features
 
@@ -55,23 +50,29 @@ Trading workspace:
 
 - Real-time simulated market prices over Socket.IO
 - Market watch with searchable stocks and watchlist controls
-- Buy/sell trade ticket with validation and confirmation flow
-- Virtual cash accounting and position-after-order visibility
-- Stale-price guard before confirming reviewed trades
+- Market and limit order ticket
+- Bid/ask, spread, estimated slippage, cash-after-order, and position-after-order visibility
+- Stop-loss, target, thesis, confidence, setup type, and invalidation notes
+- Position-size warning based on per-user risk settings
+- Pending order result and cancel flow
 
 Portfolio and history:
 
 - Total equity, virtual cash, market value, and open gain/loss
 - Holdings table with average cost, live value, and return %
 - Allocation chart and holdings breakdown
-- Trade history with buy/sell value, closed gain/loss, sell win rate, position-after-trade, and trade IDs
+- Closed gain/loss, win rate, drawdown, open planned risk, and exposure warnings
+- Trade history with fill price, slippage, closed gain/loss, position-after-trade, and order IDs
+- Separate Orders page for pending, filled, cancelled, rejected, and partially filled orders
 
-Research screen:
+Scenario and review:
 
 - Backend-maintained rolling price history per stock
-- Simple forecast range with low, middle, and high estimates
+- Scenario range with lower, middle, and upper cases
 - Risk level and plain-language notes about recent price behavior
 - Stock ideas with short reasons for practice decisions
+- Graceful fallback when the FastAPI scenario service is slow or unavailable
+- Discipline page with score, biggest issue, setup review, and recommendation cards
 
 ## Screenshots
 
@@ -83,15 +84,17 @@ Research screen:
 | --- | --- |
 | ![Holdings](docs/screenshots/portfolio.png) | ![Research settings](docs/screenshots/insights.png) |
 
-| Forecast range | Trade history |
+| Scenario range | Trade history |
 | --- | --- |
-| ![Forecast range](docs/screenshots/insights-forecast.png) | ![Trade history](docs/screenshots/transactions.png) |
+| ![Scenario range](docs/screenshots/insights-forecast.png) | ![Trade history](docs/screenshots/transactions.png) |
 
-## Development Write-Up
+| Orders | Discipline review |
+| --- | --- |
+| ![Orders](docs/screenshots/orders.png) | ![Discipline review](docs/screenshots/discipline.png) |
 
-I documented the major problems faced while building StockBreakers and how each one was solved:
-
-[Building StockBreakers: Problems Faced and How I Solved Them](docs/development-problems-and-solutions.md)
+| Mobile navigation |
+| --- |
+| ![Mobile navigation](docs/screenshots/mobile-navigation.png) |
 
 ## Architecture
 
@@ -100,16 +103,18 @@ Browser
   |-- React + Vite trading workspace
   |-- Zustand state management
   |-- Recharts charts
-  |-- Socket.IO client for live prices
+  |-- Socket.IO client with polling fallback
   v
 Express API
-  |-- Auth, trades, holdings, transactions, watchlist
-  |-- Backend rolling price history
+  |-- Auth, orders, fills, holdings, transactions, watchlist
+  |-- Order engine with bid/ask, slippage, partial fills, and idempotency
+  |-- Risk settings, portfolio analytics, and discipline summary
+  |-- Backend rolling quote and candle history
   |-- Zod validation and security middleware
   |-- MongoDB persistence
   v
-FastAPI Research Service
-  |-- Forecast range generation
+FastAPI Scenario Service
+  |-- Simulated scenario range generation
   |-- Risk level calculation
   |-- Practice stock ideas
 ```
@@ -121,21 +126,21 @@ FastAPI Research Service
 - Research service: FastAPI, Pydantic 2, NumPy, Uvicorn
 - Runtime/deploy: Docker Compose, Nginx, Render blueprint, GitHub Pages demo, health checks, readiness checks
 
-## Research Flow
+## Scenario Flow
 
-StockBreakers keeps the research flow transparent and easy to explain:
+StockBreakers keeps the scenario flow transparent:
 
 1. The backend price engine maintains rolling simulated price history for every stock.
-2. The Research screen requests that history through the backend.
-3. The Express API forwards the request to the FastAPI research service.
-4. The research service returns a simple price range, risk level, and practice stock ideas.
-5. The frontend explains the result in user-friendly language instead of exposing backend internals.
+2. The Scenario screen requests that history through the backend.
+3. The Express API forwards the request to the FastAPI scenario service with a strict timeout.
+4. The scenario service returns a range, risk level, and practice stock ideas.
+5. If the service is down or slow, Express returns a simpler backend-only fallback instead of leaving the UI stuck.
 
 The user sees:
 
 - Current price
-- Low, middle, and high estimate
-- Chance above today's price
+- Lower, middle, and upper cases
+- Upside cases
 - Risk level
 - Plain-language notes about what to watch
 
@@ -211,7 +216,6 @@ PORT=5000
 MONGO_URI=mongodb://localhost:27017/stockbreakers
 JWT_SECRET=replace-with-a-64-character-random-secret
 JWT_EXPIRES_IN=7d
-GOOGLE_CLIENT_ID=
 ML_SERVICE_URL=http://localhost:8000
 CLIENT_URL=http://localhost:5173
 CORS_ORIGINS=http://localhost:5173
@@ -219,6 +223,7 @@ RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=250
 TRUST_PROXY=false
 STATIC_DIR=
+MARKET_SESSION_ENABLED=true
 ```
 
 Frontend:
@@ -228,7 +233,6 @@ VITE_API_URL=http://localhost:5000/api
 VITE_SOCKET_URL=http://localhost:5000
 VITE_DEMO_MODE=false
 VITE_BASE_PATH=/
-VITE_GOOGLE_CLIENT_ID=
 ```
 
 Research service:
@@ -249,17 +253,33 @@ Market and portfolio:
 
 - `GET /api/stocks`
 - `GET /api/stocks/:ticker`
+- `GET /api/market/status`
+- `GET /api/market/candles/:ticker`
+- `POST /api/orders`
+- `GET /api/orders`
+- `GET /api/orders/:id`
+- `POST /api/orders/:id/cancel`
 - `POST /api/trade/buy`
 - `POST /api/trade/sell`
 - `GET /api/portfolio`
 - `GET /api/portfolio/summary`
+- `GET /api/portfolio/analytics`
 - `GET /api/transactions?limit=50`
 - `POST /api/watchlist/add`
 - `POST /api/watchlist/remove`
+- `GET /api/risk/settings`
+- `PUT /api/risk/settings`
+- `GET /api/discipline/summary`
+- `GET /api/trade-plans`
+- `GET /api/trade-plans/:id`
+- `POST /api/trade-plans`
+- `PATCH /api/trade-plans/:id`
+- `POST /api/trade-plans/:id/review`
 
-Research:
+Scenario:
 
 - `GET /api/ai/history/:ticker`
+- `POST /api/ai/scenario`
 - `POST /api/ai/predict`
 - `POST /api/ai/sentiment`
 - `POST /api/ai/risk`
@@ -286,6 +306,11 @@ VITE_DEMO_MODE=true VITE_BASE_PATH=/STOCK_BREAKERS/ npm run build
 
 ```bash
 cd server
+npm test
+```
+
+```bash
+cd server
 npm run audit:prod
 ```
 
@@ -293,3 +318,12 @@ npm run audit:prod
 cd ml-service
 python -m compileall main.py
 ```
+
+## Known Limitations
+
+- Market data is simulated inside the app.
+- Orders are simulated and never sent to a real broker.
+- The fill model is simplified compared with real exchanges.
+- Average-cost accounting is used instead of detailed tax lots.
+- Scenario analysis is based on simulated in-app history and should not be treated as investment advice.
+- Local MongoDB standalone mode uses safe sequential writes; a production replica set is required for true multi-document transactions.

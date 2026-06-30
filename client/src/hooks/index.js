@@ -3,47 +3,93 @@ import { socket, api, apiErrorMessage } from "../utils/api.js";
 import { usePriceStore, usePortfolioStore } from "../stores/index.js";
 
 export const useSocket = () => {
-  const { setStocks, setConnected } = usePriceStore();
+  const { setStocks, setConnected, setDegraded, setMarketStatus } = usePriceStore();
 
   useEffect(() => {
-    const handleConnect = () => setConnected(true);
-    const handleDisconnect = () => setConnected(false);
+    let pollId = null;
+    let fallbackTimer = null;
+    const poll = async () => {
+      try {
+        const [stockResult, statusResult] = await Promise.allSettled([
+          api.get("/stocks"),
+          api.get("/market/status"),
+        ]);
+        if (stockResult.status === "fulfilled") setStocks(stockResult.value.data.stocks);
+        if (statusResult.status === "fulfilled") setMarketStatus(statusResult.value.data.market);
+      } catch {
+        // Keep the last successful price data visible.
+      }
+    };
+    const startPolling = () => {
+      if (pollId) return;
+      setDegraded(true);
+      poll();
+      pollId = window.setInterval(poll, 12000);
+    };
+    const stopPolling = () => {
+      if (pollId) window.clearInterval(pollId);
+      pollId = null;
+      setDegraded(false);
+    };
+    const handleConnect = () => {
+      setConnected(true);
+      stopPolling();
+    };
+    const handleDisconnect = () => {
+      setConnected(false);
+      startPolling();
+    };
+    const handlePrices = (stocks) => {
+      setStocks(stocks);
+      const market = stocks?.[0]?.marketStatus ? { status: stocks[0].marketStatus, regime: stocks[0].regime } : null;
+      if (market) setMarketStatus(market);
+    };
 
-    api.get("/stocks").then(({ data }) => setStocks(data.stocks)).catch(() => {});
+    poll();
 
     socket.connect();
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
-    socket.on("price_update", setStocks);
+    socket.on("connect_error", handleDisconnect);
+    socket.on("price_update", handlePrices);
+
+    fallbackTimer = window.setTimeout(() => {
+      if (!socket.connected) startPolling();
+    }, 7000);
 
     return () => {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
-      socket.off("price_update", setStocks);
+      socket.off("connect_error", handleDisconnect);
+      socket.off("price_update", handlePrices);
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      stopPolling();
       socket.disconnect();
     };
-  }, [setConnected, setStocks]);
+  }, [setConnected, setDegraded, setMarketStatus, setStocks]);
 };
 
 export const usePortfolio = () => {
-  const { setHoldings, setSummary, setLoading, setError } = usePortfolioStore();
+  const { setHoldings, setSummary, setAnalytics, setLoading, setError } = usePortfolioStore();
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [holdingsRes, summaryRes] = await Promise.all([
+      const [holdingsRes, summaryRes, analyticsRes] = await Promise.all([
         api.get("/portfolio"),
         api.get("/portfolio/summary"),
+        api.get("/portfolio/analytics").catch(() => ({ data: { analytics: null } })),
       ]);
       setHoldings(holdingsRes.data.holdings);
       setSummary(summaryRes.data);
+      if (analyticsRes.data && !analyticsRes.data.analytics) setAnalytics(analyticsRes.data);
     } catch (err) {
       setError(apiErrorMessage(err, "Could not load portfolio"));
     } finally {
       setLoading(false);
     }
-  }, [setError, setHoldings, setLoading, setSummary]);
+  }, [setAnalytics, setError, setHoldings, setLoading, setSummary]);
 
   useEffect(() => {
     refresh();

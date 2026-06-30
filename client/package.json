@@ -12,11 +12,11 @@
     "node": ">=20"
   },
   "dependencies": {
-    "axios": "^1.6.0",
+    "axios": "^1.18.1",
     "lucide-react": "^1.16.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.22.0",
+    "react-router-dom": "^6.30.4",
     "recharts": "^2.12.0",
     "socket.io-client": "^4.6.1",
     "zustand": "^4.5.0"
@@ -28,6 +28,11 @@
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
-    "vite": "^8.0.14"
+    "vite": "^8.1.1"
+  },
+  "overrides": {
+    "engine.io-client": "^6.6.6",
+    "form-data": "^4.0.6",
+    "ws": "^8.21.0"
   }
 }

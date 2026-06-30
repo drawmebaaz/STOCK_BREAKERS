@@ -34,7 +34,6 @@ const schema = z.object({
   MONGO_URI: z.string().min(1).default("mongodb://localhost:27017/stockbreakers"),
   JWT_SECRET: z.string().optional(),
   JWT_EXPIRES_IN: z.string().default("7d"),
-  GOOGLE_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   ML_SERVICE_URL: z.string().url().default("http://localhost:8000"),
   CLIENT_URL: z.string().url().default("http://localhost:5173"),
   CORS_ORIGINS: z.string().optional(),

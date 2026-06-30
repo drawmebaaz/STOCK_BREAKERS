@@ -268,7 +268,7 @@ export default function InsightsPage() {
       const { data: history } = await api.get(`/ai/history/${ticker}`);
       const prices = history.prices;
       const [predRes, sentRes, riskRes] = await Promise.all([
-        api.post("/ai/predict", { ticker, prices, horizon, simulations: sims }),
+        api.post("/ai/scenario", { ticker, prices, horizon, simulations: sims }),
         api.post("/ai/sentiment", { ticker }),
         api.post("/ai/risk", { ticker, prices }),
       ]);
@@ -290,17 +290,17 @@ export default function InsightsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="stat-label">Research lab</p>
-          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Price Forecast & Risk Review</h1>
-          <p className="mt-1 text-sm text-slate-500">Run a practice forecast, compare possible price ranges, and review risk before trading.</p>
+          <p className="stat-label">Scenario lab</p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-50">Scenario Analysis</h1>
+          <p className="mt-1 text-sm text-slate-500">Compare possible simulated price ranges before placing a practice trade.</p>
         </div>
         <button onClick={runAnalysis} disabled={loading || stocks.length === 0} className="btn-primary">
-          {loading ? "Checking" : "Review Stock"}
+          {loading ? "Checking" : "Run Scenario"}
         </button>
       </div>
 
       <div className="panel p-4">
-        <h2 className="section-title">Analysis Settings</h2>
+        <h2 className="section-title">Scenario Settings</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <label>
             <span className="stat-label mb-1 block">Stock</span>
@@ -317,7 +317,7 @@ export default function InsightsPage() {
             </select>
           </label>
           <label>
-            <span className="stat-label mb-1 block">Review depth</span>
+            <span className="stat-label mb-1 block">Detail level</span>
             <select className="input" value={sims} onChange={(event) => setSims(+event.target.value)}>
               {[
                 { label: "Quick", value: 100 },
@@ -341,8 +341,8 @@ export default function InsightsPage() {
       {!result && !loading && (
         <div className="panel">
           <div className="empty-state min-h-64">
-            <p>Choose a stock and run an analysis to see the forecast panel.</p>
-            <p className="text-xs">The simulator uses backend price history to create practice comparisons.</p>
+            <p>Choose a stock and run a scenario to see the range panel.</p>
+            <p className="text-xs">This uses simulated in-app price history, not real market data.</p>
           </div>
         </div>
       )}
@@ -350,7 +350,7 @@ export default function InsightsPage() {
       {loading && (
         <div className="panel p-6">
           <div className="flex items-center gap-3 text-sm text-slate-400">
-            Checking recent price history for {ticker}.
+            Checking recent simulated price history for {ticker}.
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <div className="skeleton h-20" />
@@ -365,32 +365,38 @@ export default function InsightsPage() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
             <StatCard label="Current price" value={currency(result.prices.at(-1))} />
             <StatCard
-              label="Middle estimate"
+              label="Middle case"
               value={currency(stats?.median_final)}
               sub={signedPercent(medianMove, 1)}
               tone={medianMove >= 0 ? "positive" : "negative"}
             />
-            <StatCard label="Low estimate" value={currency(stats?.p5_final)} tone="negative" />
-            <StatCard label="High estimate" value={currency(stats?.p95_final)} tone="positive" />
+            <StatCard label="Lower case" value={currency(stats?.p5_final)} tone="negative" />
+            <StatCard label="Upper case" value={currency(stats?.p95_final)} tone="positive" />
             <StatCard
-              label="Chance above today"
+              label="Upside cases"
               value={`${stats?.prob_gain ?? 0}%`}
               tone={(stats?.prob_gain ?? 0) >= 50 ? "positive" : "negative"}
             />
             <StatCard label="Risk level" value={result.risk.label} tone="warning" />
           </div>
 
+          {result.predict?.status === "degraded" && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              {result.predict.message || "Scenario service is using a simpler fallback right now."}
+            </div>
+          )}
+
           <div className="panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="section-title">{ticker} Forecast Range</h2>
+                <h2 className="section-title">{ticker} Scenario Range</h2>
                 <p className="section-subtitle mt-1">
-                  {horizon}-day practice view using {result.history?.points || result.prices.length} recent price points.
+                  {horizon}-day practice view using {result.history?.points || result.prices.length} recent simulated price points.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3 text-xs text-slate-500">
                 <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#7ba8d8]" />Past price</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#c6a15b]" />Middle</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#c6a15b]" />Middle case</span>
                 <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#e06f70]" />Range</span>
               </div>
             </div>
@@ -424,7 +430,7 @@ export default function InsightsPage() {
                   <Line dataKey="historical" stroke="#7ba8d8" strokeWidth={2} dot={false} name="Past price" connectNulls />
                   <Line dataKey="p95" stroke="#68c8c3" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="High range" connectNulls />
                   <Line dataKey="p75" stroke="#7ba8d8" strokeWidth={1} dot={false} strokeDasharray="3 3" name="Upper range" connectNulls />
-                  <Line dataKey="p50" stroke="#bc9042" strokeWidth={2.2} dot={false} name="Middle" connectNulls />
+                  <Line dataKey="p50" stroke="#bc9042" strokeWidth={2.2} dot={false} name="Middle case" connectNulls />
                   <Line dataKey="p25" stroke="#c9973f" strokeWidth={1} dot={false} strokeDasharray="3 3" name="Lower range" connectNulls />
                   <Line dataKey="p5" stroke="#dc6b69" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="Low range" connectNulls />
                 </LineChart>

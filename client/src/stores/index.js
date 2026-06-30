@@ -24,6 +24,8 @@ export const usePriceStore = create((set) => ({
   stocks: [],
   priceMap: {},
   connected: false,
+  degraded: false,
+  marketStatus: null,
   lastUpdated: null,
   setStocks: (stocks) => {
     const priceMap = stocks.reduce((acc, stock) => {
@@ -33,15 +35,19 @@ export const usePriceStore = create((set) => ({
     set({ stocks, priceMap, lastUpdated: new Date().toISOString() });
   },
   setConnected: (connected) => set({ connected }),
+  setDegraded: (degraded) => set({ degraded }),
+  setMarketStatus: (marketStatus) => set({ marketStatus }),
 }));
 
 export const usePortfolioStore = create((set) => ({
   holdings: [],
   summary: null,
+  analytics: null,
   loading: false,
   error: "",
   setHoldings: (holdings) => set({ holdings }),
   setSummary: (summary) => set({ summary }),
+  setAnalytics: (analytics) => set({ analytics }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
 }));

@@ -12,10 +12,15 @@ import morgan from "morgan";
 import authRoutes from "./routes/auth.js";
 import stockRoutes from "./routes/stocks.js";
 import tradeRoutes from "./routes/trade.js";
+import orderRoutes from "./routes/orders.js";
 import portfolioRoutes from "./routes/portfolio.js";
 import transactionRoutes from "./routes/transactions.js";
 import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
+import riskRoutes from "./routes/risk.js";
+import disciplineRoutes from "./routes/discipline.js";
+import marketRoutes from "./routes/market.js";
+import tradePlanRoutes from "./routes/tradePlans.js";
 import { env } from "./config/env.js";
 import { notFound, errorHandler } from "./middleware/errors.js";
 import { initPriceEngine } from "./sockets/priceEngine.js";
@@ -70,10 +75,15 @@ app.get("/api/ready", (_, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/stocks", stockRoutes);
 app.use("/api/trade", tradeRoutes);
+app.use("/api/orders", orderRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/risk", riskRoutes);
+app.use("/api/discipline", disciplineRoutes);
+app.use("/api/market", marketRoutes);
+app.use("/api/trade-plans", tradePlanRoutes);
 
 if (env.STATIC_DIR) {
   app.use(express.static(env.STATIC_DIR, { maxAge: env.isProduction ? "1h" : 0 }));

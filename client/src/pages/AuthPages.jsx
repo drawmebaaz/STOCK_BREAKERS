@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { api, apiErrorMessage } from "../utils/api.js";
@@ -19,39 +19,19 @@ const PROJECT_NOTES = [
   },
 ];
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-let googleScriptPromise;
-
-const loadGoogleScript = () => {
-  if (window.google?.accounts?.id) return Promise.resolve();
-  if (googleScriptPromise) return googleScriptPromise;
-
-  googleScriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("Could not load Google sign-in"));
-    document.head.appendChild(script);
-  });
-
-  return googleScriptPromise;
-};
-
 function AuthCard({ title, subtitle, children }) {
   return (
-    <div className="workspace-shell flex min-h-screen items-center justify-center px-4 py-8">
-      <div className="grid w-full max-w-5xl overflow-hidden rounded-lg border border-slate-800 bg-[#101821] shadow-sm lg:grid-cols-[0.9fr_1fr]">
-        <section className="border-b border-slate-800 p-6 lg:border-b-0 lg:border-r lg:p-8">
-          <div>
+    <div className="auth-shell workspace-shell">
+      <div className="auth-frame">
+        <section className="auth-brief">
+          <div className="auth-brand">
             <p className="text-lg font-semibold text-slate-100">StockBreakers</p>
             <p className="mt-1 text-sm text-slate-500">Paper trading simulator</p>
           </div>
 
-          <div className="mt-8">
+          <div className="auth-copy">
             <p className="stat-label">Project brief</p>
-            <h1 className="mt-3 max-w-md text-3xl font-semibold leading-tight text-slate-50">
+            <h1 className="mt-3 max-w-md text-3xl font-semibold leading-tight text-slate-50 auth-title">
               A realistic practice workspace for virtual trading decisions.
             </h1>
             <p className="mt-4 max-w-md text-sm leading-6 text-slate-400">
@@ -60,9 +40,9 @@ function AuthCard({ title, subtitle, children }) {
             </p>
           </div>
 
-          <div className="mt-8 space-y-3">
+          <div className="auth-notes">
             {PROJECT_NOTES.map(({ title: noteTitle, detail }) => (
-              <div key={noteTitle} className="rounded-md border border-slate-800 bg-[#0b121a] p-4">
+              <div key={noteTitle} className="auth-note">
                 <p className="text-sm font-semibold text-slate-200">{noteTitle}</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p>
               </div>
@@ -70,15 +50,20 @@ function AuthCard({ title, subtitle, children }) {
           </div>
         </section>
 
-        <section className="p-5 sm:p-8">
+        <section className="auth-panel-section">
+          <div className="auth-panel-brand">
+            <p className="text-base font-semibold text-slate-100">StockBreakers</p>
+            <p className="mt-1 text-xs text-slate-500">Paper trading simulator</p>
+          </div>
+
           <div className="mb-7">
             <h2 className="text-2xl font-semibold text-slate-50">{title}</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">{subtitle}</p>
           </div>
 
-          <div className="panel p-5">{children}</div>
+          <div className="auth-form-panel panel">{children}</div>
 
-          <p className="mt-5 text-xs leading-5 text-slate-600">
+          <p className="auth-footnote">
             This is a college project simulator. It uses virtual funds and simulated market data for learning and demos.
           </p>
         </section>
@@ -119,63 +104,6 @@ function PasswordField({ label, value, onChange, placeholder, autoComplete, minL
   );
 }
 
-function GoogleAuthButton({ onCredential, disabled }) {
-  const buttonRef = useRef(null);
-  const onCredentialRef = useRef(onCredential);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    onCredentialRef.current = onCredential;
-  }, [onCredential]);
-
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return undefined;
-    let cancelled = false;
-
-    loadGoogleScript()
-      .then(() => {
-        if (cancelled || !buttonRef.current || !window.google?.accounts?.id) return;
-
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: ({ credential }) => {
-            if (credential) onCredentialRef.current(credential);
-          },
-        });
-
-        window.google.accounts.id.renderButton(buttonRef.current, {
-          theme: "outline",
-          size: "large",
-          type: "standard",
-          text: "continue_with",
-          shape: "rectangular",
-          width: Math.min(buttonRef.current.offsetWidth || 320, 400),
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setError("Google sign-in could not be loaded.");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!GOOGLE_CLIENT_ID) return null;
-
-  return (
-    <div className={disabled ? "pointer-events-none opacity-60" : ""}>
-      <div className="my-5 flex items-center gap-3">
-        <span className="h-px flex-1 bg-slate-800" />
-        <span className="text-xs font-medium uppercase tracking-[0.12em] text-slate-600">or</span>
-        <span className="h-px flex-1 bg-slate-800" />
-      </div>
-      <div ref={buttonRef} className="min-h-[42px] w-full" />
-      {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
-    </div>
-  );
-}
-
 export function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -193,20 +121,6 @@ export function LoginPage() {
       navigate("/");
     } catch (err) {
       setError(apiErrorMessage(err, "Login failed"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const signInWithGoogle = async (credential) => {
-    setLoading(true);
-    setError("");
-    try {
-      const { data } = await api.post("/auth/google", { credential });
-      setAuth(data.user, data.token);
-      navigate("/");
-    } catch (err) {
-      setError(apiErrorMessage(err, "Google sign-in failed"));
     } finally {
       setLoading(false);
     }
@@ -245,8 +159,6 @@ export function LoginPage() {
         </button>
       </form>
 
-      <GoogleAuthButton onCredential={signInWithGoogle} disabled={loading} />
-
       <p className="mt-5 text-center text-sm text-slate-500">
         New here?{" "}
         <Link to="/register" className="font-medium text-slate-200 hover:text-white">
@@ -274,20 +186,6 @@ export function RegisterPage() {
       navigate("/");
     } catch (err) {
       setError(apiErrorMessage(err, "Registration failed"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const signInWithGoogle = async (credential) => {
-    setLoading(true);
-    setError("");
-    try {
-      const { data } = await api.post("/auth/google", { credential });
-      setAuth(data.user, data.token);
-      navigate("/");
-    } catch (err) {
-      setError(apiErrorMessage(err, "Google sign-in failed"));
     } finally {
       setLoading(false);
     }
@@ -337,8 +235,6 @@ export function RegisterPage() {
           {loading ? "Creating..." : "Create account"}
         </button>
       </form>
-
-      <GoogleAuthButton onCredential={signInWithGoogle} disabled={loading} />
 
       <p className="mt-5 text-center text-sm text-slate-500">
         Already registered?{" "}

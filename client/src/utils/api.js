@@ -11,7 +11,7 @@ const SOCKET_URL =
 
 const realApi = axios.create({
   baseURL: BASE,
-  timeout: 10000,
+  timeout: 8000,
 });
 
 realApi.interceptors.request.use((config) => {
@@ -31,9 +31,15 @@ realApi.interceptors.response.use(
 export const api = DEMO_MODE ? createDemoApi() : realApi;
 
 export const apiErrorMessage = (err, fallback = "Something went wrong") =>
-  err.response?.data?.error || err.response?.data?.detail || err.message || fallback;
+  err.code === "ECONNABORTED"
+    ? "The request took too long. Please retry."
+    : err.response?.data?.error || err.response?.data?.detail || err.message || fallback;
 
 export const socket = DEMO_MODE ? demoSocket : io(SOCKET_URL, {
   autoConnect: false,
   transports: ["websocket", "polling"],
+  timeout: 6000,
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1200,
 });

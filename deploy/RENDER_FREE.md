@@ -23,8 +23,7 @@ mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/stockbreakers?retryWrites=true&w
 5. Connect `drawmebaaz/STOCK_BREAKERS`.
 6. Render will read `render.yaml`.
 7. Paste the Atlas connection string into the private `MONGO_URI` field.
-8. Optional: add Google sign-in by setting both `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` to the same Google OAuth Web Client ID.
-9. Deploy.
+8. Deploy.
 
 The expected app URL from the blueprint is:
 
@@ -33,8 +32,6 @@ https://stockbreakers-paper-lab.onrender.com
 ```
 
 If Render asks you to rename the service because the name is already taken, rename it and update `CLIENT_URL` and `CORS_ORIGINS` to match the new URL.
-
-For Google sign-in, add the final Render URL to the Google OAuth client's authorized JavaScript origins.
 
 ## Demo User
 

@@ -67,7 +67,7 @@ export default function TransactionsPage() {
 
       const avgCost = current.quantity > 0 ? current.costBasis / current.quantity : transaction.price;
       const matchedQty = Math.min(transaction.quantity, current.quantity);
-      const realizedPnl = +((transaction.price - avgCost) * matchedQty).toFixed(2);
+      const realizedPnl = transaction.realizedPnl ?? +((transaction.price - avgCost) * matchedQty).toFixed(2);
       const nextQty = Math.max(0, current.quantity - transaction.quantity);
       const nextCostBasis = nextQty > 0 ? +(current.costBasis - avgCost * matchedQty).toFixed(2) : 0;
 
@@ -183,9 +183,10 @@ export default function TransactionsPage() {
                   <th className="text-right">Price</th>
                   <th className="text-right">Value</th>
                   <th className="text-right">Closed Gain/Loss</th>
+                  <th className="text-right">Slippage</th>
                   <th className="text-right">After</th>
                   <th>Timestamp</th>
-                  <th>ID</th>
+                  <th>Order</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,7 +201,7 @@ export default function TransactionsPage() {
                       <span className="ticker-chip">{transaction.ticker}</span>
                     </td>
                     <td className="text-right mono">{transaction.quantity}</td>
-                    <td className="text-right mono">{currency(transaction.price)}</td>
+                    <td className="text-right mono">{currency(transaction.fillPrice || transaction.price)}</td>
                     <td className="text-right mono font-semibold">
                       <span className={transaction.type === "buy" ? "text-red-300" : "text-emerald-300"}>
                         {transaction.type === "buy" ? "-" : "+"}{currency(transaction.total)}
@@ -216,6 +217,9 @@ export default function TransactionsPage() {
                       )}
                     </td>
                     <td className="text-right mono text-slate-500">
+                      {transaction.slippage !== undefined && transaction.slippage !== null ? currency(transaction.slippage) : "--"}
+                    </td>
+                    <td className="text-right mono text-slate-500">
                       {transaction.positionAfter ?? "--"}
                     </td>
                     <td className="text-slate-500">
@@ -227,7 +231,9 @@ export default function TransactionsPage() {
                         minute: "2-digit",
                       })}
                     </td>
-                    <td className="mono text-xs text-slate-600">{String(transaction._id).slice(-8).toUpperCase()}</td>
+                    <td className="mono text-xs text-slate-600">
+                      {String(transaction.orderId || transaction._id).slice(-8).toUpperCase()}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -1,53 +1,158 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useAuthStore, usePriceStore } from "../stores/index.js";
+import { usePortfolio } from "../hooks/index.js";
+import { useAuthStore, usePortfolioStore, usePriceStore } from "../stores/index.js";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
+
+const SETUP_TYPES = [
+  ["BREAKOUT", "Breakout"],
+  ["PULLBACK", "Pullback"],
+  ["MOMENTUM", "Momentum"],
+  ["REVERSAL", "Reversal"],
+  ["RANGE", "Range"],
+  ["PRACTICE", "Practice"],
+  ["OTHER", "Other"],
+];
+
+const HOLDING_PERIODS = [
+  ["INTRADAY", "Same day"],
+  ["SWING", "Few days"],
+  ["POSITION", "Longer hold"],
+  ["PRACTICE", "Practice"],
+];
+
+const makeKey = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+function SummaryRow({ label, value, tone = "neutral" }) {
+  const toneClass = {
+    positive: "text-emerald-300",
+    negative: "text-red-300",
+    warning: "text-amber-300",
+    neutral: "text-slate-200",
+  }[tone];
+  return (
+    <div className="flex items-center justify-between gap-4 text-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className={`mono text-right font-medium ${toneClass}`}>{value}</span>
+    </div>
+  );
+}
+
+function StatusCard({ order, onCancel, cancelling }) {
+  if (!order) return null;
+  const cfg = {
+    FILLED: "badge-up",
+    PARTIALLY_FILLED: "badge-accent",
+    PENDING: "badge-neutral",
+    CANCELLED: "badge-neutral",
+    REJECTED: "badge-down",
+    EXPIRED: "badge-down",
+  };
+  const canCancel = ["PENDING", "PARTIALLY_FILLED"].includes(order.status);
+  return (
+    <div className="rounded-md border border-slate-800 bg-slate-950/50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="section-title">Order Result</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            {order.side} {order.quantity} {order.ticker} - {order.type.toLowerCase()} order
+          </p>
+        </div>
+        <span className={cfg[order.status] || "badge-neutral"}>{order.status.replace("_", " ")}</span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <SummaryRow label="Filled" value={`${order.filledQuantity || 0}/${order.quantity}`} />
+        <SummaryRow label="Avg fill" value={order.avgFillPrice ? currency(order.avgFillPrice) : "--"} />
+        <SummaryRow label="Slippage" value={currency(order.actualSlippage || 0)} />
+      </div>
+      {order.rejectionReason && <div className="alert-error mt-4">{order.rejectionReason}</div>}
+      {canCancel && (
+        <button onClick={onCancel} disabled={cancelling} className="btn-ghost mt-4 px-3 py-1.5 text-xs">
+          {cancelling ? "Cancelling..." : "Cancel pending order"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function TradePage() {
   const { ticker: paramTicker } = useParams();
   const navigate = useNavigate();
-  const stocks = usePriceStore((s) => s.stocks);
-  const priceMap = usePriceStore((s) => s.priceMap);
+  const { refresh } = usePortfolio();
   const { user, updateBalance } = useAuthStore();
+  const { holdings, summary } = usePortfolioStore();
+  const stocks = usePriceStore((s) => s.stocks);
 
   const [ticker, setTicker] = useState(paramTicker || "AAPL");
-  const [qty, setQty] = useState(1);
-  const [mode, setMode] = useState("buy");
-  const [status, setStatus] = useState(null);
+  const [side, setSide] = useState("BUY");
+  const [orderType, setOrderType] = useState("MARKET");
+  const [quantity, setQuantity] = useState(1);
+  const [limitPrice, setLimitPrice] = useState("");
+  const [riskSettings, setRiskSettings] = useState(null);
+  const [plan, setPlan] = useState({
+    thesis: "",
+    setupType: "PRACTICE",
+    entryReason: "",
+    invalidationReason: "",
+    stopLoss: "",
+    targetPrice: "",
+    confidence: 3,
+    plannedHoldingPeriod: "PRACTICE",
+  });
   const [loading, setLoading] = useState(false);
-  const [holding, setHolding] = useState(null);
-  const [reviewing, setReviewing] = useState(false);
-  const [reviewSnapshot, setReviewSnapshot] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [error, setError] = useState("");
+  const [resultOrder, setResultOrder] = useState(null);
 
   const stock = stocks.find((item) => item.ticker === ticker);
-  const price = priceMap[ticker] ?? stock?.price ?? 0;
-  const total = useMemo(() => +(price * qty).toFixed(2), [price, qty]);
-  const cashBalance = Number(user?.cashBalance ?? 0);
-  const estimatedCash = mode === "buy"
-    ? cashBalance - total
-    : cashBalance + total;
-  const sellCapacity = holding?.quantity || 0;
-  const maxBuyQty = price > 0 ? Math.min(10000, Math.floor(cashBalance / price)) : 0;
-  const maxOrderQty = mode === "buy" ? maxBuyQty : sellCapacity;
-  const positionAfter = mode === "buy" ? sellCapacity + qty : Math.max(sellCapacity - qty, 0);
-  const currentPositionValue = price * sellCapacity;
-  const cashUsagePct = mode === "buy" && cashBalance > 0 ? (total / cashBalance) * 100 : 0;
-  const reviewDriftPct = reviewSnapshot?.price
-    ? Math.abs((price - reviewSnapshot.price) / reviewSnapshot.price) * 100
-    : 0;
-  const validation =
-    mode === "buy" && estimatedCash < 0
-      ? "Insufficient virtual cash for this order."
-      : mode === "sell" && qty > sellCapacity
-        ? "Quantity exceeds shares currently held."
-        : "";
-  const orderHint =
-    !validation && mode === "buy" && cashUsagePct > 25
-        ? `This trade uses ${cashUsagePct.toFixed(1)}% of available virtual cash. Consider a smaller size if you are testing a new idea.`
-      : !validation && mode === "sell" && qty === sellCapacity && sellCapacity > 0
-        ? "This trade sells the full practice holding."
-        : "";
+  const holding = holdings.find((item) => item.ticker === ticker);
+  const qty = Math.max(1, Number(quantity || 1));
+  const cash = Number(user?.cashBalance || summary?.cash || 0);
+  const totalEquity = Number(summary?.totalValue || cash);
+  const bid = Number(stock?.bid || stock?.price || 0);
+  const ask = Number(stock?.ask || stock?.price || 0);
+  const mid = Number(stock?.mid || stock?.price || 0);
+  const effectiveEntry = orderType === "LIMIT" && Number(limitPrice) > 0
+    ? Number(limitPrice)
+    : side === "BUY"
+      ? ask
+      : bid;
+  const slippageEstimate = Math.max(0, effectiveEntry * (1 - Number(stock?.liquidityScore || 0.85)) * 0.001 + qty / Math.max(1000, Number(stock?.averageVolume || 500000)) * effectiveEntry);
+  const fillEstimate = side === "BUY" ? effectiveEntry + slippageEstimate : Math.max(0.01, effectiveEntry - slippageEstimate);
+  const tradeValue = fillEstimate * qty;
+  const sharesHeld = Number(holding?.quantity || 0);
+  const positionAfter = side === "BUY" ? sharesHeld + qty : Math.max(0, sharesHeld - qty);
+  const cashAfter = side === "BUY" ? cash - tradeValue : cash + tradeValue;
+  const stopLoss = Number(plan.stopLoss || 0);
+  const targetPrice = Number(plan.targetPrice || 0);
+  const riskPerShare = side === "BUY" && stopLoss > 0 ? Math.max(0, fillEstimate - stopLoss) : 0;
+  const rewardPerShare = side === "BUY" && targetPrice > 0 ? Math.max(0, targetPrice - fillEstimate) : 0;
+  const maxLoss = riskPerShare * qty;
+  const possibleReward = rewardPerShare * qty;
+  const riskPercent = totalEquity > 0 ? (maxLoss / totalEquity) * 100 : 0;
+  const rewardRisk = maxLoss > 0 ? possibleReward / maxLoss : 0;
+  const maxRiskPercent = Number(riskSettings?.maxRiskPerTradePercent || 2);
+  const maxRiskAmount = totalEquity * (maxRiskPercent / 100);
+  const maxQtyByRisk = riskPerShare > 0 ? Math.floor(maxRiskAmount / riskPerShare) : 0;
+  const tickerExposure = totalEquity > 0 ? ((positionAfter * mid) / totalEquity) * 100 : 0;
+
+  const warnings = [
+    side === "BUY" && cashAfter < 0 ? "This order needs more virtual cash than available." : null,
+    side === "SELL" && qty > sharesHeld ? "You do not hold enough shares to sell this quantity." : null,
+    orderType === "LIMIT" && !Number(limitPrice) ? "Enter a limit price for this order." : null,
+    side === "BUY" && stopLoss > 0 && stopLoss >= fillEstimate ? "Stop-loss should be below the expected entry price." : null,
+    side === "BUY" && targetPrice > 0 && targetPrice <= fillEstimate ? "Target should be above the expected entry price." : null,
+    side === "BUY" && riskPerShare > 0 && maxQtyByRisk > 0 && qty > maxQtyByRisk
+      ? `This size risks more than your ${maxRiskPercent}% per-trade limit.`
+      : null,
+    tickerExposure > Number(riskSettings?.maxTickerExposurePercent || 25)
+      ? "This would make the position large compared with your account size."
+      : null,
+  ].filter(Boolean);
 
   useEffect(() => {
     if (paramTicker) setTicker(paramTicker.toUpperCase());
@@ -62,107 +167,94 @@ export default function TradePage() {
   }, [navigate, stocks, ticker]);
 
   useEffect(() => {
-    setReviewing(false);
-    setReviewSnapshot(null);
-  }, [ticker, mode, qty]);
+    api.get("/risk/settings")
+      .then(({ data }) => setRiskSettings(data.settings))
+      .catch(() => setRiskSettings(null));
+  }, []);
 
   useEffect(() => {
-    if (!ticker) return;
-    api.get("/portfolio").then(({ data }) => {
-      const nextHolding = data.holdings.find((item) => item.ticker === ticker);
-      setHolding(nextHolding || null);
-    }).catch(() => setHolding(null));
-  }, [ticker]);
+    setError("");
+    setResultOrder(null);
+  }, [ticker, side, orderType, quantity, limitPrice]);
 
-  const setSafeQuantity = (value) => {
-    const next = Math.max(1, Math.min(10000, parseInt(value, 10) || 1));
-    setQty(next);
-    setStatus(null);
+  const updatePlan = (field, value) => {
+    setPlan((current) => ({ ...current, [field]: value }));
+    setError("");
   };
 
-  const quantityPresets = mode === "buy"
-    ? [
-        { label: "1", value: 1 },
-        { label: "5", value: 5 },
-        { label: "10", value: 10 },
-        { label: "25% cash", value: Math.max(1, Math.floor(maxBuyQty * 0.25)) },
-        { label: "Max", value: maxBuyQty },
-      ]
-    : [
-        { label: "1", value: 1 },
-        { label: "25%", value: Math.max(1, Math.floor(sellCapacity * 0.25)) },
-        { label: "50%", value: Math.max(1, Math.floor(sellCapacity * 0.5)) },
-        { label: "Sell all", value: sellCapacity },
-      ];
-
-  const execute = async () => {
-    if (qty <= 0 || !price || validation) return;
-    if (!reviewing) {
-      setReviewSnapshot({ ticker, mode, qty, price, total, createdAt: Date.now() });
-      setReviewing(true);
-      setStatus(null);
-      return;
-    }
-
-    if (reviewSnapshot && reviewDriftPct > 0.5) {
-      setReviewing(false);
-      setReviewSnapshot(null);
-      setStatus({
-        ok: false,
-        msg: `The price moved ${reviewDriftPct.toFixed(2)}% after review. Please check the updated trade before confirming.`,
-      });
+  const place = async () => {
+    if (!stock) return;
+    if (warnings.some((warning) => warning.includes("more virtual cash") || warning.includes("not hold enough") || warning.includes("limit price"))) {
+      setError(warnings[0]);
       return;
     }
 
     setLoading(true);
-    setStatus(null);
+    setError("");
     try {
-      const { data } = await api.post(`/trade/${mode}`, { ticker, quantity: Number(qty) });
-      updateBalance(data.cashBalance);
-      setStatus({
-        ok: true,
-        msg: `${mode === "buy" ? "Bought" : "Sold"} ${qty} ${ticker} at ${currency(price)}`,
-      });
-      setReviewing(false);
-      setReviewSnapshot(null);
-
-      const { data: portfolio } = await api.get("/portfolio");
-      setHolding(portfolio.holdings.find((item) => item.ticker === ticker) || null);
+      const payload = {
+        ticker,
+        side,
+        type: orderType,
+        quantity: qty,
+        limitPrice: orderType === "LIMIT" ? Number(limitPrice) : undefined,
+        idempotencyKey: makeKey(),
+        tradePlan: {
+          ...plan,
+          stopLoss: plan.stopLoss ? Number(plan.stopLoss) : undefined,
+          targetPrice: plan.targetPrice ? Number(plan.targetPrice) : undefined,
+          confidence: Number(plan.confidence),
+        },
+      };
+      const { data } = await api.post("/orders", payload);
+      setResultOrder(data.order);
+      if (data.snapshot?.cash !== undefined) updateBalance(data.snapshot.cash);
+      await refresh();
     } catch (err) {
-      setStatus({ ok: false, msg: apiErrorMessage(err, "Trade failed") });
+      setError(apiErrorMessage(err, "Order could not be placed"));
     } finally {
       setLoading(false);
     }
   };
 
-  const canSubmit = !loading && Boolean(stock) && qty > 0 && price > 0 && !validation;
-  const actionLabel = reviewing
-    ? `Confirm ${mode === "buy" ? "buy" : "sell"} trade`
-    : `Review ${mode === "buy" ? "buy" : "sell"} trade`;
+  const cancel = async () => {
+    if (!resultOrder?._id) return;
+    setCancelling(true);
+    setError("");
+    try {
+      const { data } = await api.post(`/orders/${resultOrder._id}/cancel`);
+      setResultOrder(data.order);
+      await refresh();
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not cancel order"));
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="stat-label">Practice trades</p>
+          <p className="stat-label">Order ticket</p>
           <h1 className="mt-2 text-2xl font-semibold text-slate-50">Trade Desk</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Buy or sell with virtual cash and review the effect before confirming.
+            Place simulated market or limit orders, with risk checked before submission.
           </p>
         </div>
+        <button onClick={() => navigate("/orders")} className="btn-ghost">View Orders</button>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+      <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
         <section className="panel p-4">
-          <h2 className="section-title">Stock</h2>
-          <div className="mt-4">
-            <label className="stat-label mb-1.5 block">Choose stock</label>
+          <h2 className="section-title">Market Quote</h2>
+          <label className="mt-4 block">
+            <span className="stat-label mb-1 block">Stock</span>
             <select
               className="input"
               value={ticker}
               onChange={(event) => {
                 setTicker(event.target.value);
-                setStatus(null);
                 navigate(`/trade/${event.target.value}`);
               }}
             >
@@ -170,205 +262,174 @@ export default function TradePage() {
                 <option key={item.ticker} value={item.ticker}>{item.ticker} - {item.name}</option>
               ))}
             </select>
-          </div>
+          </label>
 
           {stock ? (
             <div className="mt-4 rounded-md border border-slate-800 bg-slate-950/50 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="ticker-chip">{stock.ticker}</p>
-                  <p className="mt-3 mono text-3xl font-semibold text-slate-50">{currency(price)}</p>
+                  <p className="mono mt-3 text-3xl font-semibold text-slate-50">{currency(stock.price)}</p>
                   <p className="mt-1 text-sm text-slate-500">{stock.name}</p>
                 </div>
-                <span className={stock.change >= 0 ? "badge-up" : "badge-down"}>
-                  {signedPercent(stock.change)}
-                </span>
+                <span className={stock.change >= 0 ? "badge-up" : "badge-down"}>{signedPercent(stock.change)}</span>
               </div>
               <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-800 pt-4">
-                <div>
-                  <p className="stat-label">Sector</p>
-                  <p className="mt-1 text-sm text-slate-300">{stock.sector}</p>
-                </div>
-                <div>
-                  <p className="stat-label">Held</p>
-                  <p className="mono mt-1 text-sm text-slate-300">{sellCapacity} shares</p>
-                </div>
-                <div>
-                  <p className="stat-label">Avg cost</p>
-                  <p className="mono mt-1 text-sm text-slate-300">{holding ? currency(holding.avgCost) : "--"}</p>
-                </div>
-                <div>
-                  <p className="stat-label">Position value</p>
-                  <p className="mono mt-1 text-sm text-slate-300">{sellCapacity ? currency(currentPositionValue) : "--"}</p>
-                </div>
+                <SummaryRow label="Bid" value={currency(bid)} />
+                <SummaryRow label="Ask" value={currency(ask)} />
+                <SummaryRow label="Spread" value={currency(stock.spread || ask - bid)} />
+                <SummaryRow label="Held" value={`${sharesHeld} shares`} />
+                <SummaryRow label="Day low" value={currency(stock.dayLow)} />
+                <SummaryRow label="Day high" value={currency(stock.dayHigh)} />
               </div>
             </div>
           ) : (
-            <div className="mt-4 empty-state min-h-32">Connecting to prices...</div>
+            <div className="empty-state mt-4 min-h-40">Connecting to prices...</div>
           )}
         </section>
 
         <section className="panel overflow-hidden">
           <div className="border-b border-slate-800 px-4 py-3">
-            <h2 className="section-title">Trade Ticket</h2>
-            <p className="section-subtitle mt-1">All trades use virtual funds only.</p>
+            <h2 className="section-title">Order Details</h2>
+            <p className="section-subtitle mt-1">All orders are simulated and use virtual funds only.</p>
           </div>
 
-          <div className="grid gap-6 p-4 2xl:grid-cols-[1fr_340px]">
-            <div className="space-y-4">
+          <div className="grid gap-6 p-4 2xl:grid-cols-[1fr_360px]">
+            <div className="space-y-5">
               <div className="grid grid-cols-2 overflow-hidden rounded-md border border-slate-800 bg-slate-950/60">
-                <button
-                  onClick={() => { setMode("buy"); setReviewing(false); }}
-                  className={`py-2.5 text-sm font-semibold transition-colors ${
-                    mode === "buy" ? "bg-emerald-500 text-slate-950" : "text-slate-500 hover:bg-slate-900 hover:text-slate-200"
-                  }`}
-                >
-                  Buy
-                </button>
-                <button
-                  onClick={() => { setMode("sell"); setReviewing(false); }}
-                  className={`py-2.5 text-sm font-semibold transition-colors ${
-                    mode === "sell" ? "bg-red-500 text-white" : "text-slate-500 hover:bg-slate-900 hover:text-slate-200"
-                  }`}
-                >
-                  Sell
-                </button>
+                {["BUY", "SELL"].map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setSide(item)}
+                    className={`py-2.5 text-sm font-semibold transition-colors ${
+                      side === item
+                        ? item === "BUY"
+                          ? "bg-emerald-500 text-slate-950"
+                          : "bg-red-500 text-white"
+                        : "text-slate-500 hover:bg-slate-900 hover:text-slate-200"
+                    }`}
+                  >
+                    {item === "BUY" ? "Buy" : "Sell"}
+                  </button>
+                ))}
               </div>
 
-              <div>
-                <label className="stat-label mb-1.5 block">Quantity</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="10000"
-                  value={qty}
-                  onChange={(event) => setSafeQuantity(event.target.value)}
-                  className="input mono"
-                />
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {quantityPresets.map((preset) => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      disabled={preset.value < 1}
-                      onClick={() => setSafeQuantity(preset.value)}
-                      className="rounded border border-slate-800 bg-slate-950/60 px-2.5 py-1 text-xs font-medium text-slate-400 transition-colors hover:border-slate-700 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {preset.label}
-                    </button>
+              <div className="grid gap-3 md:grid-cols-3">
+                <label>
+                  <span className="stat-label mb-1 block">Order type</span>
+                  <select className="input" value={orderType} onChange={(event) => setOrderType(event.target.value)}>
+                    <option value="MARKET">Market</option>
+                    <option value="LIMIT">Limit</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="stat-label mb-1 block">Quantity</span>
+                  <input
+                    className="input mono"
+                    type="number"
+                    min="1"
+                    max="100000"
+                    value={quantity}
+                    onChange={(event) => setQuantity(event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span className="stat-label mb-1 block">Limit price</span>
+                  <input
+                    className="input mono"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={orderType !== "LIMIT"}
+                    value={limitPrice}
+                    onChange={(event) => setLimitPrice(event.target.value)}
+                    placeholder={orderType === "LIMIT" ? "Price" : "Market order"}
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-md border border-slate-800 bg-slate-950/40 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="section-title">Risk Plan</h2>
+                  <span className="badge-neutral">Used for review later</span>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label className="md:col-span-2">
+                    <span className="stat-label mb-1 block">Why this trade?</span>
+                    <textarea
+                      className="input min-h-20 resize-y"
+                      value={plan.thesis}
+                      onChange={(event) => updatePlan("thesis", event.target.value)}
+                      placeholder="Example: price is holding above support after a pullback"
+                    />
+                  </label>
+                  <label>
+                    <span className="stat-label mb-1 block">Setup</span>
+                    <select className="input" value={plan.setupType} onChange={(event) => updatePlan("setupType", event.target.value)}>
+                      {SETUP_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="stat-label mb-1 block">Holding time</span>
+                    <select className="input" value={plan.plannedHoldingPeriod} onChange={(event) => updatePlan("plannedHoldingPeriod", event.target.value)}>
+                      {HOLDING_PERIODS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="stat-label mb-1 block">Stop-loss</span>
+                    <input className="input mono" type="number" min="0" step="0.01" value={plan.stopLoss} onChange={(event) => updatePlan("stopLoss", event.target.value)} />
+                  </label>
+                  <label>
+                    <span className="stat-label mb-1 block">Target</span>
+                    <input className="input mono" type="number" min="0" step="0.01" value={plan.targetPrice} onChange={(event) => updatePlan("targetPrice", event.target.value)} />
+                  </label>
+                  <label>
+                    <span className="stat-label mb-1 block">Confidence</span>
+                    <select className="input" value={plan.confidence} onChange={(event) => updatePlan("confidence", event.target.value)}>
+                      {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}/5</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="stat-label mb-1 block">What would make you wrong?</span>
+                    <input className="input" value={plan.invalidationReason} onChange={(event) => updatePlan("invalidationReason", event.target.value)} placeholder="Example: closes below support" />
+                  </label>
+                </div>
+              </div>
+
+              {warnings.length > 0 && (
+                <div className="space-y-2">
+                  {warnings.map((warning) => (
+                    <div key={warning} className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                      {warning}
+                    </div>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-slate-500">
-                  {mode === "buy"
-                    ? `Max affordable: ${maxBuyQty} shares at the current price.`
-                    : `Available to sell: ${maxOrderQty} shares.`}
-                </p>
-              </div>
-
-              {validation && <div className="alert-error">{validation}</div>}
-
-              {orderHint && (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                  {orderHint}
-                </div>
               )}
+              {error && <div className="alert-error">{error}</div>}
+              <StatusCard order={resultOrder} onCancel={cancel} cancelling={cancelling} />
 
-              {reviewing && !validation && (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                  Review this practice {mode} trade before confirming. No real money is used.
-                  {reviewDriftPct > 0.25 && (
-                    <span className="mt-2 block text-xs text-amber-200">
-                      Current price has moved {reviewDriftPct.toFixed(2)}% since review.
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {status && (
-                <div className={status.ok ? "alert-success flex items-start gap-2" : "alert-error flex items-start gap-2"}>
-                  <span>{status.msg}</span>
-                </div>
-              )}
-
-              <button
-                onClick={execute}
-                disabled={!canSubmit}
-                className={`w-full ${mode === "buy" ? "btn-buy" : "btn-sell"}`}
-              >
-                {loading ? "Processing..." : actionLabel}
+              <button onClick={place} disabled={loading || !stock} className={side === "BUY" ? "btn-buy w-full" : "btn-sell w-full"}>
+                {loading ? "Submitting..." : side === "BUY" ? "Place buy order" : "Place sell order"}
               </button>
             </div>
 
             <aside className="rounded-md border border-slate-800 bg-slate-950/50 p-4">
-              <h3 className="section-title">Trade Summary</h3>
-              <div className="mt-4 space-y-3 text-sm">
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Current price</span>
-                  <span className="mono text-slate-100">{currency(price)}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Quantity</span>
-                  <span className="mono text-slate-100">{qty}</span>
-                </div>
-                <div className="flex justify-between gap-4 border-t border-slate-800 pt-3">
-                  <span className="font-medium text-slate-300">Trade value</span>
-                  <span className="mono font-semibold text-slate-50">{currency(total)}</span>
-                </div>
-                <div className="flex justify-between gap-4 pt-2">
-                  <span className="text-slate-500">Cash before</span>
-                  <span className="mono text-slate-300">{currency(cashBalance)}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Cash after</span>
-                  <span className={`mono ${estimatedCash >= 0 ? "text-slate-300" : "text-red-300"}`}>
-                    {currency(estimatedCash)}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Position after</span>
-                  <span className="mono text-slate-300">{positionAfter} shares</span>
-                </div>
-                {mode === "buy" && (
-                  <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Cash used</span>
-                    <span className={cashUsagePct > 25 ? "mono text-amber-300" : "mono text-slate-300"}>
-                      {cashUsagePct.toFixed(1)}%
-                    </span>
-                  </div>
-                )}
-                {reviewSnapshot && (
-                  <>
-                    <div className="flex justify-between gap-4 border-t border-slate-800 pt-3">
-                    <span className="text-slate-500">Reviewed price</span>
-                      <span className="mono text-slate-300">{currency(reviewSnapshot.price)}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-slate-500">Review time</span>
-                      <span className="mono text-slate-300">
-                        {new Date(reviewSnapshot.createdAt).toLocaleTimeString("en-IN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-slate-500">Price movement</span>
-                      <span className={reviewDriftPct > 0.25 ? "mono text-amber-300" : "mono text-slate-300"}>
-                        {reviewDriftPct.toFixed(2)}%
-                      </span>
-                    </div>
-                  </>
-                )}
+              <h3 className="section-title">Before You Submit</h3>
+              <div className="mt-4 space-y-3">
+                <SummaryRow label="Expected entry" value={currency(fillEstimate)} />
+                <SummaryRow label="Estimated value" value={currency(tradeValue)} />
+                <SummaryRow label="Cash after" value={currency(cashAfter)} tone={cashAfter < 0 ? "negative" : "neutral"} />
+                <SummaryRow label="Shares after" value={`${positionAfter}`} />
+                <SummaryRow label="Position size" value={`${tickerExposure.toFixed(1)}%`} tone={tickerExposure > 25 ? "warning" : "neutral"} />
+                <div className="border-t border-slate-800 pt-3" />
+                <SummaryRow label="Risk if stopped" value={riskPerShare > 0 ? currency(maxLoss) : "--"} tone={riskPercent > maxRiskPercent ? "warning" : "neutral"} />
+                <SummaryRow label="Risk percent" value={riskPerShare > 0 ? `${riskPercent.toFixed(2)}%` : "--"} />
+                <SummaryRow label="Reward/risk" value={rewardRisk > 0 ? `${rewardRisk.toFixed(2)}x` : "--"} />
+                <SummaryRow label="Max size by risk" value={maxQtyByRisk > 0 ? `${maxQtyByRisk} shares` : "--"} />
               </div>
-
-              {holding && (
-                <div className="mt-5 border-t border-slate-800 pt-4 text-xs text-slate-500">
-                  Current position:{" "}
-                  <span className="mono text-slate-300">{holding.quantity}</span> shares at avg cost{" "}
-                  <span className="mono text-slate-300">{currency(holding.avgCost)}</span>.
-                </div>
-              )}
+              <p className="mt-5 text-xs leading-5 text-slate-500">
+                Market orders fill against ask for buys and bid for sells. Limit orders may stay pending until the simulated quote reaches your price.
+              </p>
             </aside>
           </div>
         </section>

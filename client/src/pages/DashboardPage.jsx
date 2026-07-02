@@ -253,8 +253,8 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-500">Biggest drop</span>
-                <span className="mono text-sm text-red-300">
+                <span className="text-xs text-slate-500">{weakest?.change < 0 ? "Biggest drop" : "Smallest move"}</span>
+                <span className={weakest?.change < 0 ? "mono text-sm text-red-300" : "mono text-sm text-slate-300"}>
                   {weakest ? `${weakest.ticker} ${signedPercent(weakest.change)}` : "--"}
                 </span>
               </div>

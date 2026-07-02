@@ -114,7 +114,7 @@ export const tradeReviewSchema = z.object({
 
 export const predictionSchema = z.object({
   ticker: tickerSchema,
-  prices: z.array(z.coerce.number().positive()).min(10).max(500),
+  prices: z.array(z.coerce.number().positive()).min(10).max(500).optional(),
   horizon: z.coerce.number().int().min(1).max(180).default(30),
   simulations: z.coerce.number().int().min(100).max(5000).default(500),
 });

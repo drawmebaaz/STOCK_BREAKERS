@@ -814,7 +814,14 @@ const handleGet = (url) => {
     const filled = state.orders.filter((order) => ["FILLED", "PARTIALLY_FILLED"].includes(order.status));
     const planned = filled.filter((order) => order.tradePlanId).length;
     const unplanned = Math.max(0, filled.length - planned);
-    const score = Math.max(0, 100 - unplanned * 10);
+    const planning = filled.length ? Math.max(0, 1 - unplanned / filled.length) : 0;
+    const risk = filled.length ? planned / filled.length : 0;
+    const sizing = 1;
+    const review = 0;
+    const behavior = 1;
+    const score = filled.length
+      ? Math.round((planning * 0.3 + risk * 0.3 + sizing * 0.15 + review * 0.15 + behavior * 0.1) * 100)
+      : null;
     return respond({
       totalTrades: filled.length,
       plannedTrades: planned,
@@ -832,10 +839,30 @@ const handleGet = (url) => {
       noThesisTrades: unplanned,
       biggestBehaviorLeak: unplanned ? "Planning gap" : "No clear leak yet",
       weeklyDisciplineScore: score,
+      scoreLabel: score === null ? "Not enough data" : score >= 80 ? "Strong routine" : score >= 60 ? "Mostly controlled" : score >= 40 ? "Needs structure" : "High-risk habits",
+      scoreConfidence: filled.length >= 8 ? "MEDIUM" : "LOW",
+      scoreExplanation: score === null
+        ? "Place a few practice orders with a written plan before judging discipline."
+        : "Demo mode scores the visible practice habits from browser-stored orders.",
+      scoreBreakdown: {
+        planning: round(planning * 100),
+        risk: round(risk * 100),
+        sizing: round(sizing * 100),
+        review: round(review * 100),
+        behavior: round(behavior * 100),
+        weights: { planning: 0.3, risk: 0.3, sizing: 0.15, review: 0.15, behavior: 0.1 },
+      },
       improvementTrend: "Demo mode keeps this simple.",
+      followedPlanRate: 0,
+      reviewedTrades: 0,
       recommendationCards: [
         { id: "demo-1", text: "Use the risk plan on each practice order so your history becomes useful." },
         { id: "demo-2", text: "Add stop-loss and target prices before taking larger simulated positions." },
+      ],
+      nextTradeChecklist: [
+        "Write the entry reason in one plain sentence.",
+        "Set the price that would prove the trade wrong.",
+        "Keep the planned loss small compared with your account.",
       ],
       recentReviews: [],
       setupPerformance: [],

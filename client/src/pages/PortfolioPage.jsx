@@ -110,9 +110,7 @@ export default function PortfolioPage() {
   const largestWeight = marketValue > 0 ? (largest / marketValue) * 100 : 0;
   const positivePositions = enriched.filter((holding) => holding.pnl >= 0).length;
   const totalIndex = indexes.find((index) => index.symbol === "SBX_TOTAL");
-  const portfolioReturn = Number(summary?.pnlPct || 0);
   const benchmarkReturn = Number(totalIndex?.dayChangePercent || 0);
-  const alpha = portfolioReturn - benchmarkReturn;
   const pieData = enriched.map((holding) => ({
     name: holding.ticker,
     value: +holding.currentValue.toFixed(2),
@@ -164,10 +162,10 @@ export default function PortfolioPage() {
           />
           {totalIndex && (
             <Metric
-              label="Vs benchmark"
-              value={signedPercent(alpha, 1)}
-              sub={`Portfolio ${signedPercent(portfolioReturn, 1)} / market ${signedPercent(benchmarkReturn, 1)}`}
-              tone={alpha >= 0 ? "positive" : "negative"}
+              label="Market today"
+              value={signedPercent(benchmarkReturn, 1)}
+              sub="Context only; your gain/loss uses open positions"
+              tone={benchmarkReturn >= 0 ? "positive" : "negative"}
             />
           )}
         </div>

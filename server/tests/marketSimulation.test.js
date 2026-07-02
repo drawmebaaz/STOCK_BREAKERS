@@ -81,6 +81,28 @@ test("benchmark indexes include total market", () => {
   assert.ok(indexes.some((index) => index.symbol === "SBX_TOTAL"));
 });
 
+test("benchmark daily return resets by simulated date", () => {
+  const profiles = instrumentProfiles.slice(0, 2);
+  updateBenchmarkIndexes({
+    profiles,
+    quotes: profiles.map((profile) => ({ ticker: profile.ticker, price: 100 })),
+    clock: { simulatedDate: "2026-07-10", simulatedTime: "10:00" },
+  });
+  updateBenchmarkIndexes({
+    profiles,
+    quotes: profiles.map((profile) => ({ ticker: profile.ticker, price: 110 })),
+    clock: { simulatedDate: "2026-07-10", simulatedTime: "10:10" },
+  });
+  const nextDay = updateBenchmarkIndexes({
+    profiles,
+    quotes: profiles.map((profile) => ({ ticker: profile.ticker, price: 120 })),
+    clock: { simulatedDate: "2026-07-11", simulatedTime: "10:00" },
+  });
+  const total = nextDay.find((index) => index.symbol === "SBX_TOTAL");
+
+  assert.equal(total.dayChangePercent, 0);
+});
+
 test("market state reacts to active event context", () => {
   resetMarketState();
   const state = updateMarketState({

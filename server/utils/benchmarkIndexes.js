@@ -24,7 +24,6 @@ export const updateBenchmarkIndexes = ({ profiles, quotes, clock }) => {
       ? memberQuotes.reduce((sum, quote) => sum + Number(quote.price || 0), 0) / memberQuotes.length
       : 0;
     const prior = indexHistory[definition.symbol]?.at(-1);
-    const dayOpen = indexHistory[definition.symbol]?.[0]?.value || currentValue;
     const point = {
       symbol: definition.symbol,
       value: round(currentValue),
@@ -33,6 +32,8 @@ export const updateBenchmarkIndexes = ({ profiles, quotes, clock }) => {
       timestamp: new Date().toISOString(),
     };
     indexHistory[definition.symbol] = [...(indexHistory[definition.symbol] || []), point].slice(-500);
+    const sameDayHistory = indexHistory[definition.symbol].filter((item) => item.simulatedDate === clock.simulatedDate);
+    const dayOpen = sameDayHistory[0]?.value || currentValue;
     return {
       ...definition,
       currentValue: point.value,
@@ -49,4 +50,3 @@ export const getBenchmarkIndexes = () => indexes;
 
 export const getBenchmarkIndex = (symbol) =>
   indexes.find((index) => index.symbol === String(symbol || "").toUpperCase()) || null;
-

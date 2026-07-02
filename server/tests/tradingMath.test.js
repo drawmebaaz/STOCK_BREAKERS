@@ -13,15 +13,33 @@ const quote = {
   price: 100,
   bid: 99.95,
   ask: 100.05,
+  spread: 0.1,
   volume: 100000,
   averageVolume: 1000000,
   liquidityScore: 0.9,
   percentChange: 0.4,
+  volatilityRegime: "NORMAL",
 };
 
 test("slippage is positive for buys and negative for sells", () => {
   assert.ok(calculateSlippage({ quote, side: "BUY", quantity: 50 }) > 0);
   assert.ok(calculateSlippage({ quote, side: "SELL", quantity: 50 }) < 0);
+});
+
+test("slippage increases when an order takes more visible liquidity", () => {
+  const smallOrder = calculateSlippage({ quote, side: "BUY", quantity: 50 });
+  const largeOrder = calculateSlippage({ quote, side: "BUY", quantity: 80000 });
+  assert.ok(largeOrder > smallOrder);
+});
+
+test("slippage increases in thinner and more volatile conditions", () => {
+  const calm = calculateSlippage({ quote: { ...quote, liquidityScore: 0.95, volatilityRegime: "LOW", activeEventCount: 0 }, side: "BUY", quantity: 500 });
+  const stressed = calculateSlippage({
+    quote: { ...quote, liquidityScore: 0.35, volatilityRegime: "CRASH", activeEventCount: 3, volume: 12000 },
+    side: "BUY",
+    quantity: 500,
+  });
+  assert.ok(stressed > calm);
 });
 
 test("risk plan calculates max size and reward/risk", () => {
@@ -49,15 +67,26 @@ test("fill estimate caps large orders by simulated liquidity", () => {
 });
 
 test("discipline score penalizes repeated process issues", () => {
-  const score = calculateDisciplineScore({
+  const result = calculateDisciplineScore({
     totalTrades: 10,
     unplannedTrades: 2,
     tradesWithoutStop: 1,
     oversizedTrades: 1,
     poorExitCount: 1,
     revengeTradeSignals: 1,
+    reviewedTrades: 4,
   });
-  assert.equal(score, 35);
+  assert.equal(result.score, 79);
+  assert.equal(result.confidence, "MEDIUM");
+  assert.equal(result.components.planning, 0.8);
+  assert.equal(result.components.review, 0.4);
+});
+
+test("discipline score avoids fake precision when there are no trades", () => {
+  const result = calculateDisciplineScore({ totalTrades: 0 });
+  assert.equal(result.score, null);
+  assert.equal(result.label, "Not enough data");
+  assert.equal(result.confidence, "LOW");
 });
 
 test("order validation requires limit price for limit orders", () => {

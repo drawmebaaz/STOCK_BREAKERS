@@ -3,14 +3,28 @@ export const roundMoney = (value, digits = 2) => Number(Number(value || 0).toFix
 export const calculateSlippage = ({ quote, side, quantity }) => {
   const price = Number(quote?.mid || quote?.price || 0);
   const liquidityScore = Math.max(0.1, Number(quote?.liquidityScore || 0.75));
-  const averageVolume = Math.max(1000, Number(quote?.averageVolume || 500000));
-  const volatility = Math.abs(Number(quote?.percentChange || quote?.change || 0)) / 100;
-  const quantityImpact = Math.min(0.006, quantity / averageVolume / liquidityScore);
-  const volatilityImpact = Math.min(0.004, volatility * 0.18);
-  const lowLiquidityImpact = (1 - liquidityScore) * 0.0015;
-  const base = 0.00015;
+  const visibleVolume = Math.max(1000, Number(quote?.volume || quote?.averageVolume || 500000));
+  const spreadPct = price > 0 ? Math.max(0, Number(quote?.spread || 0) / price) : 0;
+  const participation = Math.min(1, Number(quantity || 0) / Math.max(1, visibleVolume * liquidityScore));
+  const regime = String(quote?.volatilityRegime || quote?.regime || "NORMAL").toUpperCase();
+  const regimeImpact = {
+    LOW: 0.00005,
+    NORMAL: 0.00015,
+    HIGH: 0.0007,
+    NEWS: 0.001,
+    CRASH: 0.0015,
+    RECOVERY: 0.0005,
+  }[regime] ?? 0.0002;
+  const base = 0.0001;
+  const spreadImpact = Math.min(0.003, spreadPct * 0.25);
+  const participationImpact = Math.min(0.0075, participation * 0.015);
+  const lowLiquidityImpact = (1 - liquidityScore) * 0.002;
+  const eventImpact = Math.min(0.0015, Number(quote?.activeEventCount || 0) * 0.00035);
   const deterministicNoise = ((quantity * 9301 + price * 49297) % 233280) / 233280 * 0.00025;
-  const slippagePct = Math.min(0.0125, base + quantityImpact + volatilityImpact + lowLiquidityImpact + deterministicNoise);
+  const slippagePct = Math.min(
+    0.015,
+    base + spreadImpact + participationImpact + lowLiquidityImpact + regimeImpact + eventImpact + deterministicNoise
+  );
   const slippage = price * slippagePct;
   return side === "BUY" ? roundMoney(slippage, 4) : -roundMoney(slippage, 4);
 };
@@ -66,14 +80,56 @@ export const calculateDisciplineScore = ({
   oversizedTrades = 0,
   poorExitCount = 0,
   revengeTradeSignals = 0,
+  reviewedTrades = 0,
 }) => {
-  if (totalTrades === 0) return 100;
-  const score =
-    100 -
-    unplannedTrades * 10 -
-    tradesWithoutStop * 15 -
-    oversizedTrades * 10 -
-    poorExitCount * 10 -
-    revengeTradeSignals * 10;
-  return Math.max(0, Math.min(100, Math.round(score)));
+  const trades = Math.max(0, Number(totalTrades || 0));
+  if (trades === 0) {
+    return {
+      score: null,
+      label: "Not enough data",
+      confidence: "LOW",
+      components: {
+        planning: 0,
+        risk: 0,
+        sizing: 0,
+        review: 0,
+        behavior: 0,
+      },
+      componentWeights: {
+        planning: 0.3,
+        risk: 0.3,
+        sizing: 0.15,
+        review: 0.15,
+        behavior: 0.1,
+      },
+    };
+  }
+
+  const ratio = (badCount) => Math.min(1, Math.max(0, Number(badCount || 0) / trades));
+  const positiveRatio = (goodCount) => Math.min(1, Math.max(0, Number(goodCount || 0) / trades));
+  const components = {
+    planning: 1 - ratio(unplannedTrades),
+    risk: 1 - ratio(tradesWithoutStop),
+    sizing: 1 - ratio(oversizedTrades),
+    review: positiveRatio(reviewedTrades),
+    behavior: 1 - ratio(poorExitCount + revengeTradeSignals),
+  };
+  const componentWeights = {
+    planning: 0.3,
+    risk: 0.3,
+    sizing: 0.15,
+    review: 0.15,
+    behavior: 0.1,
+  };
+  const weighted =
+    components.planning * componentWeights.planning +
+    components.risk * componentWeights.risk +
+    components.sizing * componentWeights.sizing +
+    components.review * componentWeights.review +
+    components.behavior * componentWeights.behavior;
+  const score = Math.round(Math.max(0, Math.min(1, weighted)) * 100);
+  const label = score >= 80 ? "Strong routine" : score >= 60 ? "Mostly controlled" : score >= 40 ? "Needs structure" : "High-risk habits";
+  const confidence = trades >= 20 ? "HIGH" : trades >= 8 ? "MEDIUM" : "LOW";
+
+  return { score, label, confidence, components, componentWeights };
 };

@@ -27,7 +27,20 @@ const percentile = (values, pct) => {
   return sorted[low] * (1 - weight) + sorted[high] * weight;
 };
 
-const scenarioFallback = ({ ticker, prices, horizon = 30, simulations = 500, reason = "Scenario service temporarily unavailable" }) => {
+const historyForScenario = (ticker, providedPrices) => {
+  const clean = Array.isArray(providedPrices)
+    ? providedPrices.map(Number).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  if (clean.length >= 10) return clean.slice(-500);
+  return getPriceHistory(ticker, 120).map(Number).filter((value) => Number.isFinite(value) && value > 0);
+};
+
+const scenarioPayload = (body) => ({
+  ...body,
+  prices: historyForScenario(body.ticker, body.prices),
+});
+
+const scenarioFallback = ({ ticker, prices = [], horizon = 30, simulations = 500, reason = "Scenario service temporarily unavailable" }) => {
   const clean = prices.map(Number).filter((value) => Number.isFinite(value) && value > 0);
   const start = clean.at(-1) || getQuote(ticker)?.price || 1;
   const returns = clean.slice(1).map((price, index) => price / clean[index] - 1);
@@ -120,20 +133,24 @@ router.get("/history/:ticker", protect, (req, res) => {
 });
 
 router.post("/predict", protect, validateBody(predictionSchema), async (req, res) => {
+  const payload = scenarioPayload(req.body);
+  if (payload.prices.length < 10) return res.status(400).json({ error: "Not enough simulated price history for this stock yet" });
   try {
-    const { data } = await ml.post("/predict", req.body);
+    const { data } = await ml.post("/predict", payload);
     res.json(data);
   } catch (err) {
-    res.json(scenarioFallback({ ...req.body, reason: err.code === "ECONNABORTED" ? "Scenario service timed out" : "Scenario service temporarily unavailable" }));
+    res.json(scenarioFallback({ ...payload, reason: err.code === "ECONNABORTED" ? "Scenario service timed out" : "Scenario service temporarily unavailable" }));
   }
 });
 
 router.post("/scenario", protect, validateBody(predictionSchema), async (req, res) => {
+  const payload = scenarioPayload(req.body);
+  if (payload.prices.length < 10) return res.status(400).json({ error: "Not enough simulated price history for this stock yet" });
   try {
-    const { data } = await ml.post("/predict", req.body);
+    const { data } = await ml.post("/predict", payload);
     const finalPrices = [data.stats?.p5_final, data.stats?.median_final, data.stats?.p95_final].map(Number);
     const marketStatus = getMarketStatus();
-    const activeEvents = getMarketEvents({ ticker: req.body.ticker }).slice(0, 3);
+    const activeEvents = getMarketEvents({ ticker: payload.ticker }).slice(0, 3);
     const benchmark = getIndex("SBX_TOTAL");
     res.json({
       ...data,
@@ -160,7 +177,7 @@ router.post("/scenario", protect, validateBody(predictionSchema), async (req, re
       },
     });
   } catch (err) {
-    res.json(scenarioFallback({ ...req.body, reason: err.code === "ECONNABORTED" ? "Scenario service timed out" : "Scenario service temporarily unavailable" }));
+    res.json(scenarioFallback({ ...payload, reason: err.code === "ECONNABORTED" ? "Scenario service timed out" : "Scenario service temporarily unavailable" }));
   }
 });
 

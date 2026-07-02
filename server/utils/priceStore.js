@@ -27,8 +27,10 @@ let lastMarketState = getMarketState();
 
 const buildQuote = (profile, quoteCore, previousQuote, clock, marketState, activeEventSummary = null) => {
   const day = getDayStats(profile.ticker);
-  const previousClose = previousQuote?.price || profile.price;
-  const change = previousClose > 0 ? ((quoteCore.price - previousClose) / previousClose) * 100 : 0;
+  const previousPrice = previousQuote?.price || profile.price;
+  const dayOpen = Number(day.dayOpen || previousPrice);
+  const dayChange = dayOpen > 0 ? ((quoteCore.price - dayOpen) / dayOpen) * 100 : 0;
+  const lastTickChange = previousPrice > 0 ? ((quoteCore.price - previousPrice) / previousPrice) * 100 : 0;
   const liquidityScore = Math.max(0.1, Math.min(0.99, (profile.liquidityScore + Number(quoteCore.eventLiquidityAdjustment || 0)) / 100));
 
   return {
@@ -46,13 +48,14 @@ const buildQuote = (profile, quoteCore, previousQuote, clock, marketState, activ
     ask: round(quoteCore.ask, 4),
     spread: round(quoteCore.spread, 4),
     volume: quoteCore.volume,
-    dayOpen: round(day.dayOpen || previousClose),
+    dayOpen: round(dayOpen),
     dayHigh: round(day.dayHigh || quoteCore.price),
     dayLow: round(day.dayLow || quoteCore.price),
     dayVolume: day.dayVolume || quoteCore.volume,
-    previousClose: round(previousClose),
-    change: round(change, 2),
-    percentChange: round(change, 2),
+    previousClose: round(previousPrice),
+    change: round(dayChange, 2),
+    percentChange: round(dayChange, 2),
+    lastTickChangePercent: round(lastTickChange, 3),
     marketStatus: clock.session,
     marketSession: clock.session,
     regime: marketState.volatilityRegime,
@@ -159,4 +162,3 @@ export const updatePrices = () => {
 };
 
 export const availableStocksWithQuotes = () => getLivePrices();
-

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { usePriceStore } from "../stores/index.js";
 import { api, apiErrorMessage } from "../utils/api.js";
 import { currency } from "../utils/format.js";
 
@@ -15,12 +16,37 @@ function statusClass(status) {
   }[status] || "badge-neutral";
 }
 
+function cleanReason(reason = "") {
+  return String(reason).replace(/^[A-Z_]+:\s*/, "");
+}
+
+function orderNote(order, quote) {
+  if (order.rejectionReason) return cleanReason(order.rejectionReason);
+  if (order.status === "CANCELLED") return "Cancelled before it could finish filling.";
+  if (order.status === "FILLED") return "Filled in the simulator.";
+  if (!["PENDING", "PARTIALLY_FILLED"].includes(order.status)) return "";
+  if (order.type === "LIMIT" && quote) {
+    if (order.side === "BUY" && Number(quote.ask) > Number(order.limitPrice)) {
+      return `Waiting for ask ${currency(quote.ask)} to reach your limit.`;
+    }
+    if (order.side === "SELL" && Number(quote.bid) < Number(order.limitPrice)) {
+      return `Waiting for bid ${currency(quote.bid)} to reach your limit.`;
+    }
+  }
+  if (order.type === "MARKET") return "Waiting for simulated market session and available liquidity.";
+  return "Waiting for price or liquidity.";
+}
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [status, setStatus] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cancellingId, setCancellingId] = useState("");
+  const priceMap = usePriceStore((s) => s.stocks.reduce((acc, stock) => {
+    acc[stock.ticker] = stock;
+    return acc;
+  }, {}));
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -115,6 +141,7 @@ export default function OrdersPage() {
                 <tr>
                   <th>Status</th>
                   <th>Stock</th>
+                  <th>What is happening</th>
                   <th>Side</th>
                   <th>Type</th>
                   <th className="text-right">Quantity</th>
@@ -129,10 +156,12 @@ export default function OrdersPage() {
               <tbody>
                 {orders.map((order) => {
                   const canCancel = ["PENDING", "PARTIALLY_FILLED"].includes(order.status);
+                  const note = orderNote(order, priceMap[order.ticker]);
                   return (
                     <tr key={order._id}>
                       <td><span className={statusClass(order.status)}>{order.status.replace("_", " ")}</span></td>
                       <td><span className="ticker-chip">{order.ticker}</span></td>
+                      <td className="max-w-72 text-sm text-slate-500">{note || "--"}</td>
                       <td className={order.side === "BUY" ? "text-emerald-300" : "text-red-300"}>{order.side}</td>
                       <td className="text-slate-500">{order.type}</td>
                       <td className="mono text-right">{order.quantity}</td>

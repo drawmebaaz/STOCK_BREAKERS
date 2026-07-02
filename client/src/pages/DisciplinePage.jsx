@@ -81,22 +81,28 @@ export default function DisciplinePage() {
               </div>
               {summary.setupPerformance?.length ? (
                 <div className="overflow-auto">
-                  <table className="data-table">
+                  <table className="data-table table-fixed">
+                    <colgroup>
+                      <col className="w-[38%]" />
+                      <col className="w-[18%]" />
+                      <col className="w-[24%]" />
+                      <col className="w-[20%]" />
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th>Setup</th>
-                        <th className="text-right">Trades</th>
-                        <th className="text-right">Reward/risk</th>
-                        <th className="text-right">Oversized</th>
+                        <th className="align-middle">Setup</th>
+                        <th className="text-right align-middle">Trades</th>
+                        <th className="text-right align-middle">Reward/risk</th>
+                        <th className="text-right align-middle">Oversized</th>
                       </tr>
                     </thead>
                     <tbody>
                       {summary.setupPerformance.map((item) => (
                         <tr key={item.setupType}>
-                          <td>{item.setupType.replace("_", " ")}</td>
-                          <td className="mono text-right">{item.trades}</td>
-                          <td className="mono text-right">{Number(item.averageRewardRisk || 0).toFixed(2)}x</td>
-                          <td className="mono text-right">{item.oversized}</td>
+                          <td className="align-middle">{item.setupType.replace("_", " ")}</td>
+                          <td className="mono text-right align-middle tabular-nums">{item.trades}</td>
+                          <td className="mono text-right align-middle tabular-nums">{Number(item.averageRewardRisk || 0).toFixed(2)}x</td>
+                          <td className="mono text-right align-middle tabular-nums">{item.oversized}</td>
                         </tr>
                       ))}
                     </tbody>

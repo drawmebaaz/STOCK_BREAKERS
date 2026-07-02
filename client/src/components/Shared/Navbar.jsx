@@ -16,7 +16,6 @@ export default function Navbar({ onMenuClick }) {
     : "--";
   const session = marketStatus?.session || marketStatus?.status || "OPEN";
   const sessionLabel = session.replace("_", " ").toLowerCase();
-  const simTime = marketStatus?.simulatedTime || "";
 
   return (
     <header className="mobile-topbar shrink-0 border-b border-slate-800 bg-[#0a1017] px-3 sm:px-4 md:px-6">
@@ -53,7 +52,7 @@ export default function Navbar({ onMenuClick }) {
               </p>
             </div>
             <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">
-              {sessionLabel} {simTime ? `| Sim ${simTime}` : ""} | Updated: {updatedLabel}
+              {sessionLabel} | Updated: {updatedLabel}
             </p>
           </div>
         </div>
@@ -62,7 +61,7 @@ export default function Navbar({ onMenuClick }) {
           <div className="hidden rounded-md border border-slate-800 bg-[#101821] px-3 py-2 text-right sm:block">
             <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">Market</p>
             <p className={session === "OPEN" ? "mono text-sm font-semibold text-emerald-300" : "mono text-sm font-semibold text-amber-300"}>
-              {sessionLabel}{simTime ? ` ${simTime}` : ""}
+              {sessionLabel}
             </p>
           </div>
 

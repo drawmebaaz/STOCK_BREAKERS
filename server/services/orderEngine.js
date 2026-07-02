@@ -15,6 +15,7 @@ import {
   estimateFillQuantity,
   roundMoney,
 } from "./tradingMath.js";
+import { withMongoTransaction } from "../utils/withMongoTransaction.js";
 
 const DEFAULT_ORDER_EXPIRY_MS = 24 * 60 * 60 * 1000;
 const MAX_PENDING_PER_TICK = 50;
@@ -24,6 +25,13 @@ let warnedAboutStandaloneWrites = false;
 const objectId = (value) => (mongoose.isValidObjectId(value) ? new mongoose.Types.ObjectId(value) : null);
 
 const isFillableStatus = (status) => ["PENDING", "PARTIALLY_FILLED"].includes(status);
+const sessionOptions = (session) => (session ? { session } : {});
+const withSession = (query, session) => (session ? query.session(session) : query);
+const createOne = async (Model, doc, session) => {
+  if (!session) return Model.create(doc);
+  const [created] = await Model.create([doc], { session });
+  return created;
+};
 
 const orderPublicShape = (order) => {
   const doc = typeof order.toObject === "function" ? order.toObject() : order;
@@ -36,16 +44,16 @@ const orderPublicShape = (order) => {
 const availableCashOf = (user) => Math.max(0, Number(user?.cashBalance || 0) - Number(user?.reservedCash || 0));
 const availableSharesOf = (holding) => Math.max(0, Number(holding?.quantity || 0) - Number(holding?.reservedQuantity || 0));
 
-export const getOrCreateRiskSettings = async (userId) => {
-  const existing = await RiskSettings.findOne({ userId });
+export const getOrCreateRiskSettings = async (userId, session = null) => {
+  const existing = await withSession(RiskSettings.findOne({ userId }), session);
   if (existing) return existing;
-  return RiskSettings.create({ userId });
+  return createOne(RiskSettings, { userId }, session);
 };
 
-export const calculatePortfolioSnapshot = async (userId, userDoc = null) => {
+export const calculatePortfolioSnapshot = async (userId, userDoc = null, session = null) => {
   const [user, holdings] = await Promise.all([
-    userDoc ? Promise.resolve(userDoc) : User.findById(userId),
-    Holding.find({ userId }),
+    userDoc ? Promise.resolve(userDoc) : withSession(User.findById(userId), session),
+    withSession(Holding.find({ userId }), session),
   ]);
 
   const cash = Number(user?.cashBalance || 0);
@@ -70,14 +78,14 @@ export const calculatePortfolioSnapshot = async (userId, userDoc = null) => {
   };
 };
 
-const saveEquitySnapshot = async (userId, userDoc = null) => {
-  const snapshot = await calculatePortfolioSnapshot(userId, userDoc);
-  await EquitySnapshot.create({
+const saveEquitySnapshot = async (userId, userDoc = null, session = null) => {
+  const snapshot = await calculatePortfolioSnapshot(userId, userDoc, session);
+  await createOne(EquitySnapshot, {
     userId,
     cash: snapshot.cash,
     marketValue: snapshot.marketValue,
     totalEquity: snapshot.totalEquity,
-  });
+  }, session);
   return snapshot;
 };
 
@@ -98,10 +106,10 @@ export const estimateReservationAmount = ({ quote, side, quantity, type, limitPr
   return roundMoney(limit * quantity + slippageBuffer, 2);
 };
 
-export const reserveCash = async (userId, amount) => {
+export const reserveCash = async (userId, amount, session = null) => {
   const value = roundMoney(amount);
   if (value <= 0) return null;
-  return User.findOneAndUpdate(
+  return withSession(User.findOneAndUpdate(
     {
       _id: userId,
       $expr: {
@@ -113,34 +121,34 @@ export const reserveCash = async (userId, amount) => {
     },
     { $inc: { reservedCash: value } },
     { new: true, runValidators: true }
-  );
+  ), session);
 };
 
-export const releaseCash = async (userId, amount) => {
+export const releaseCash = async (userId, amount, session = null) => {
   const value = roundMoney(amount);
   if (value <= 0) return null;
-  const user = await User.findById(userId);
+  const user = await withSession(User.findById(userId), session);
   if (!user) return null;
   user.reservedCash = roundMoney(Math.max(0, Number(user.reservedCash || 0) - value));
-  return user.save();
+  return user.save(sessionOptions(session));
 };
 
-export const consumeReservedCash = async (userId, reservedAmount, actualCost) => {
+export const consumeReservedCash = async (userId, reservedAmount, actualCost, session = null) => {
   const reserved = roundMoney(reservedAmount);
   const cost = roundMoney(actualCost);
-  const user = await User.findById(userId);
+  const user = await withSession(User.findById(userId), session);
   if (!user) return null;
   const availableIncludingThisReservation = availableCashOf(user) + reserved;
   if (availableIncludingThisReservation < cost) return null;
   user.cashBalance = roundMoney(Number(user.cashBalance || 0) - cost);
   user.reservedCash = roundMoney(Math.max(0, Number(user.reservedCash || 0) - reserved));
-  return user.save();
+  return user.save(sessionOptions(session));
 };
 
-export const reserveShares = async (userId, ticker, quantity) => {
+export const reserveShares = async (userId, ticker, quantity, session = null) => {
   const qty = Number(quantity || 0);
   if (qty <= 0) return null;
-  return Holding.findOneAndUpdate(
+  return withSession(Holding.findOneAndUpdate(
     {
       userId,
       ticker,
@@ -153,22 +161,22 @@ export const reserveShares = async (userId, ticker, quantity) => {
     },
     { $inc: { reservedQuantity: qty } },
     { new: true, runValidators: true }
-  );
+  ), session);
 };
 
-export const releaseShares = async (userId, ticker, quantity) => {
+export const releaseShares = async (userId, ticker, quantity, session = null) => {
   const qty = Number(quantity || 0);
   if (qty <= 0) return null;
-  const holding = await Holding.findOne({ userId, ticker });
+  const holding = await withSession(Holding.findOne({ userId, ticker }), session);
   if (!holding) return null;
   holding.reservedQuantity = Math.max(0, Number(holding.reservedQuantity || 0) - qty);
-  return holding.save();
+  return holding.save(sessionOptions(session));
 };
 
-export const consumeReservedShares = async (userId, ticker, quantity) => {
+export const consumeReservedShares = async (userId, ticker, quantity, session = null) => {
   const qty = Number(quantity || 0);
   if (qty <= 0) return null;
-  const holding = await Holding.findOne({ userId, ticker });
+  const holding = await withSession(Holding.findOne({ userId, ticker }), session);
   if (!holding || Number(holding.quantity || 0) < qty) return null;
   holding.quantity = Math.max(0, Number(holding.quantity || 0) - qty);
   holding.reservedQuantity = Math.max(0, Number(holding.reservedQuantity || 0) - qty);
@@ -181,21 +189,21 @@ const reservationPortionForFill = (order, fillQuantity) => {
   return roundMoney((Number(order.reservedCashAmount || 0) / remainingBeforeFill) * fillQuantity);
 };
 
-const releaseOrderReservation = async (order) => {
+const releaseOrderReservation = async (order, session = null) => {
   if (!order || order.reservationStatus !== "RESERVED") return;
   if (Number(order.reservedCashAmount || 0) > 0) {
-    await releaseCash(order.userId, order.reservedCashAmount);
+    await releaseCash(order.userId, order.reservedCashAmount, session);
     order.reservedCashAmount = 0;
   }
   if (Number(order.reservedShareQuantity || 0) > 0) {
-    await releaseShares(order.userId, order.ticker, order.reservedShareQuantity);
+    await releaseShares(order.userId, order.ticker, order.reservedShareQuantity, session);
     order.reservedShareQuantity = 0;
   }
   order.reservationStatus = "RELEASED";
   order.reservationReleasedAt = new Date();
 };
 
-const createPlanIfNeeded = async ({ userId, payload, quote, totalEquity, riskSettings }) => {
+const createPlanIfNeeded = async ({ userId, payload, quote, totalEquity, riskSettings, session = null }) => {
   const plan = payload.tradePlan || {};
   const hasPlan =
     Boolean(plan.thesis?.trim()) ||
@@ -219,7 +227,7 @@ const createPlanIfNeeded = async ({ userId, payload, quote, totalEquity, riskSet
     maxRiskPerTradePercent: riskSettings.maxRiskPerTradePercent,
   });
 
-  return TradePlan.create({
+  return createOne(TradePlan, {
     userId,
     ticker: payload.ticker,
     side: payload.side,
@@ -236,15 +244,15 @@ const createPlanIfNeeded = async ({ userId, payload, quote, totalEquity, riskSet
     plannedRiskPercent: riskPlan.plannedRiskPercent,
     rewardRiskRatio: riskPlan.rewardRiskRatio,
     positionSizeWarning: riskPlan.positionSizeWarning,
-  });
+  }, session);
 };
 
-const applyBuyFill = async ({ user, order, quote, fillQuantity, fillPrice, tradePlan }) => {
+const applyBuyFill = async ({ user, order, quote, fillQuantity, fillPrice, tradePlan, session = null }) => {
   const total = roundMoney(fillQuantity * fillPrice);
   const reservedPortion = reservationPortionForFill(order, fillQuantity);
   const freshUser = reservedPortion > 0
-    ? await consumeReservedCash(user._id, reservedPortion, total)
-    : await User.findOneAndUpdate(
+    ? await consumeReservedCash(user._id, reservedPortion, total, session)
+    : await withSession(User.findOneAndUpdate(
       {
         _id: user._id,
         $expr: {
@@ -256,31 +264,31 @@ const applyBuyFill = async ({ user, order, quote, fillQuantity, fillPrice, trade
       },
       { $inc: { cashBalance: -total } },
       { new: true, runValidators: true }
-    );
+    ), session);
   if (!freshUser) {
     return { rejected: true, reason: "Insufficient virtual cash for the fill price" };
   }
   order.reservedCashAmount = roundMoney(Math.max(0, Number(order.reservedCashAmount || 0) - reservedPortion));
 
-  const holding = await Holding.findOne({ userId: user._id, ticker: order.ticker });
+  const holding = await withSession(Holding.findOne({ userId: user._id, ticker: order.ticker }), session);
   if (holding) {
     const newQuantity = holding.quantity + fillQuantity;
     const newInvested = roundMoney(holding.totalInvested + total);
     holding.quantity = newQuantity;
     holding.totalInvested = newInvested;
     holding.avgCost = roundMoney(newInvested / newQuantity, 4);
-    await holding.save();
+    await holding.save(sessionOptions(session));
   } else {
-    await Holding.create({
+    await createOne(Holding, {
       userId: user._id,
       ticker: order.ticker,
       quantity: fillQuantity,
       avgCost: fillPrice,
       totalInvested: total,
-    });
+    }, session);
   }
 
-  const transaction = await Transaction.create({
+  const transaction = await createOne(Transaction, {
     userId: user._id,
     orderId: order._id,
     fillId: `${order._id}-${Date.now()}`,
@@ -303,13 +311,13 @@ const applyBuyFill = async ({ user, order, quote, fillQuantity, fillPrice, trade
     realizedR: null,
     positionAfter: holding ? holding.quantity : fillQuantity,
     avgCostBefore: holding ? holding.avgCost : null,
-  });
+  }, session);
 
   return { user: freshUser, transaction };
 };
 
-const applySellFill = async ({ user, order, quote, fillQuantity, fillPrice, tradePlan }) => {
-  let holding = await Holding.findOne({ userId: user._id, ticker: order.ticker });
+const applySellFill = async ({ user, order, quote, fillQuantity, fillPrice, tradePlan, session = null }) => {
+  let holding = await withSession(Holding.findOne({ userId: user._id, ticker: order.ticker }), session);
   if (!holding || holding.quantity < fillQuantity) {
     return { rejected: true, reason: "Not enough shares available to sell" };
   }
@@ -321,7 +329,7 @@ const applySellFill = async ({ user, order, quote, fillQuantity, fillPrice, trad
   const realizedR = plannedRisk > 0 ? roundMoney(realizedPnl / plannedRisk, 2) : null;
 
   if (Number(order.reservedShareQuantity || 0) > 0) {
-    holding = await consumeReservedShares(user._id, order.ticker, fillQuantity);
+    holding = await consumeReservedShares(user._id, order.ticker, fillQuantity, session);
     if (!holding) return { rejected: true, reason: "Reserved shares were not available for this fill" };
     order.reservedShareQuantity = Math.max(0, Number(order.reservedShareQuantity || 0) - fillQuantity);
   } else {
@@ -330,18 +338,18 @@ const applySellFill = async ({ user, order, quote, fillQuantity, fillPrice, trad
   }
   holding.totalInvested = roundMoney(Math.max(0, holding.totalInvested - avgCostBefore * fillQuantity));
   if (holding.quantity <= 0) {
-    await holding.deleteOne();
+    await holding.deleteOne(sessionOptions(session));
   } else {
-    await holding.save();
+    await holding.save(sessionOptions(session));
   }
 
-  const freshUser = await User.findByIdAndUpdate(
+  const freshUser = await withSession(User.findByIdAndUpdate(
     user._id,
     { $inc: { cashBalance: total } },
     { new: true, runValidators: true }
-  );
+  ), session);
 
-  const transaction = await Transaction.create({
+  const transaction = await createOne(Transaction, {
     userId: user._id,
     orderId: order._id,
     fillId: `${order._id}-${Date.now()}`,
@@ -364,18 +372,18 @@ const applySellFill = async ({ user, order, quote, fillQuantity, fillPrice, trad
     realizedR,
     positionAfter: Math.max(0, holding.quantity),
     avgCostBefore,
-  });
+  }, session);
 
   if (tradePlan && holding.quantity <= 0) {
     tradePlan.status = "CLOSED";
     tradePlan.closedAt = new Date();
-    await tradePlan.save();
+    await tradePlan.save(sessionOptions(session));
   }
 
   return { user: freshUser, transaction };
 };
 
-const updateOrderAfterFill = async ({ order, fillQuantity, fillPrice, quote, slippage }) => {
+const updateOrderAfterFill = async ({ order, fillQuantity, fillPrice, quote, slippage, session = null }) => {
   const previousFilledValue = Number(order.avgFillPrice || 0) * Number(order.filledQuantity || 0);
   const nextFilledQuantity = Number(order.filledQuantity || 0) + fillQuantity;
   const nextFilledValue = previousFilledValue + fillQuantity * fillPrice;
@@ -386,7 +394,7 @@ const updateOrderAfterFill = async ({ order, fillQuantity, fillPrice, quote, sli
   order.spreadPaid = roundMoney(Number(order.spreadPaid || 0) + (quote.ask - quote.bid) * fillQuantity, 4);
   order.status = order.remainingQuantity === 0 ? "FILLED" : "PARTIALLY_FILLED";
   if (order.status === "FILLED") order.filledAt = new Date();
-  await order.save();
+  await order.save(sessionOptions(session));
 };
 
 const canLimitFill = (order, quote) => {
@@ -395,14 +403,16 @@ const canLimitFill = (order, quote) => {
   return Number(quote.bid) >= Number(order.limitPrice);
 };
 
-export const attemptFillOrder = async (orderInput) => {
-  const order = typeof orderInput.save === "function" ? orderInput : await Order.findById(orderInput);
+const attemptFillOrderInTransaction = async (orderInput, session = null) => {
+  const order = typeof orderInput.save === "function"
+    ? orderInput
+    : await withSession(Order.findById(orderInput), session);
   if (!order || !isFillableStatus(order.status)) return { order };
 
   if (order.expiresAt && new Date(order.expiresAt).getTime() < Date.now()) {
     order.status = "EXPIRED";
-    await releaseOrderReservation(order);
-    await order.save();
+    await releaseOrderReservation(order, session);
+    await order.save(sessionOptions(session));
     return { order };
   }
 
@@ -413,7 +423,7 @@ export const attemptFillOrder = async (orderInput) => {
   if (order.type === "MARKET" && !market.allowsMarketOrders) {
     order.status = order.filledQuantity > 0 ? "PARTIALLY_FILLED" : "REJECTED";
     order.rejectionReason = "MARKET_CLOSED: market orders wait until the simulated market reopens";
-    await order.save();
+    await order.save(sessionOptions(session));
     return { order, rejected: true, reason: order.rejectionReason };
   }
 
@@ -424,11 +434,11 @@ export const attemptFillOrder = async (orderInput) => {
 
   if (!canLimitFill(order, quote)) return { order };
 
-  const user = await User.findById(order.userId);
+  const user = await withSession(User.findById(order.userId), session);
   if (!user) {
     order.status = "REJECTED";
     order.rejectionReason = "User account was not found";
-    await order.save();
+    await order.save(sessionOptions(session));
     return { order };
   }
 
@@ -442,37 +452,40 @@ export const attemptFillOrder = async (orderInput) => {
     : Number(quote.bid) - Math.abs(slippage);
   const fillPrice = roundMoney(Math.max(0.01, rawFillPrice), 4);
 
-  const tradePlan = order.tradePlanId ? await TradePlan.findById(order.tradePlanId) : null;
+  const tradePlan = order.tradePlanId ? await withSession(TradePlan.findById(order.tradePlanId), session) : null;
   const result = order.side === "BUY"
-    ? await applyBuyFill({ user, order, quote, fillQuantity, fillPrice, tradePlan })
-    : await applySellFill({ user, order, quote, fillQuantity, fillPrice, tradePlan });
+    ? await applyBuyFill({ user, order, quote, fillQuantity, fillPrice, tradePlan, session })
+    : await applySellFill({ user, order, quote, fillQuantity, fillPrice, tradePlan, session });
 
   if (result.rejected) {
     order.status = order.filledQuantity > 0 ? "PARTIALLY_FILLED" : "REJECTED";
     order.rejectionReason = result.reason;
-    if (order.status === "REJECTED") await releaseOrderReservation(order);
-    await order.save();
+    if (order.status === "REJECTED") await releaseOrderReservation(order, session);
+    await order.save(sessionOptions(session));
     return { order, rejected: true, reason: result.reason };
   }
 
-  await updateOrderAfterFill({ order, fillQuantity, fillPrice, quote, slippage: Math.abs(slippage) });
+  await updateOrderAfterFill({ order, fillQuantity, fillPrice, quote, slippage: Math.abs(slippage), session });
   if (order.status === "FILLED" && order.reservationStatus === "RESERVED") {
-    await releaseOrderReservation(order);
+    await releaseOrderReservation(order, session);
     order.reservationStatus = "CONSUMED";
     order.reservationReleasedAt = new Date();
-    await order.save();
+    await order.save(sessionOptions(session));
   }
-  const snapshot = await saveEquitySnapshot(order.userId, result.user);
+  const snapshot = await saveEquitySnapshot(order.userId, result.user, session);
   return { order, transaction: result.transaction, snapshot };
 };
 
-export const placeOrder = async (userInput, payload) => {
+export const attemptFillOrder = async (orderInput) =>
+  withMongoTransaction((session) => attemptFillOrderInTransaction(orderInput, session), { allowFallback: true });
+
+const placeOrderInTransaction = async (userInput, payload, session = null) => {
   if (!warnedAboutStandaloneWrites && mongoose.connection.readyState === 1) {
     warnedAboutStandaloneWrites = true;
     console.warn("StockBreakers order engine uses safe sequential writes in local/demo mode. Use a MongoDB replica set for multi-document transactions in production.");
   }
 
-  const user = await User.findById(userInput._id);
+  const user = await withSession(User.findById(userInput._id), session);
   const ticker = String(payload.ticker || "").toUpperCase();
   const side = String(payload.side || "").toUpperCase();
   const type = String(payload.type || "MARKET").toUpperCase();
@@ -485,7 +498,7 @@ export const placeOrder = async (userInput, payload) => {
     throw error;
   }
 
-  const existing = await Order.findOne({ userId: user._id, idempotencyKey: payload.idempotencyKey });
+  const existing = await withSession(Order.findOne({ userId: user._id, idempotencyKey: payload.idempotencyKey }), session);
   if (existing) return { order: existing, idempotent: true };
 
   const quote = getQuote(ticker);
@@ -497,7 +510,7 @@ export const placeOrder = async (userInput, payload) => {
 
   const market = getMarketStatus();
   if (type === "MARKET" && !market.allowsMarketOrders) {
-    const rejected = await Order.create({
+    const rejected = await createOne(Order, {
       userId: user._id,
       ticker,
       side,
@@ -513,19 +526,19 @@ export const placeOrder = async (userInput, payload) => {
       rejectionReason: "MARKET_CLOSED: market orders can only fill during simulated trading sessions",
       idempotencyKey: payload.idempotencyKey,
       expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
-    });
+    }, session);
     return { order: rejected };
   }
 
-  const riskSettings = await getOrCreateRiskSettings(user._id);
-  const snapshot = await calculatePortfolioSnapshot(user._id, user);
+  const riskSettings = await getOrCreateRiskSettings(user._id, session);
+  const snapshot = await calculatePortfolioSnapshot(user._id, user, session);
   let reservedCashAmount = 0;
   let reservedShareQuantity = 0;
 
   if (side === "BUY") {
     const worstCaseCost = estimateWorstCaseCost({ quote, side, quantity, type, limitPrice });
     if (availableCashOf(user) < worstCaseCost) {
-      const rejected = await Order.create({
+      const rejected = await createOne(Order, {
         userId: user._id,
         ticker,
         side,
@@ -541,14 +554,14 @@ export const placeOrder = async (userInput, payload) => {
         rejectionReason: "Insufficient available virtual cash for this order",
         idempotencyKey: payload.idempotencyKey,
         expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
-      });
+      }, session);
       return { order: rejected };
     }
     if (type === "LIMIT") {
       reservedCashAmount = estimateReservationAmount({ quote, side, quantity, type, limitPrice });
-      const reservedUser = await reserveCash(user._id, reservedCashAmount);
+      const reservedUser = await reserveCash(user._id, reservedCashAmount, session);
       if (!reservedUser) {
-        const rejected = await Order.create({
+        const rejected = await createOne(Order, {
           userId: user._id,
           ticker,
           side,
@@ -564,16 +577,16 @@ export const placeOrder = async (userInput, payload) => {
           rejectionReason: "Insufficient available virtual cash for this pending limit order",
           idempotencyKey: payload.idempotencyKey,
           expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
-        });
+        }, session);
         return { order: rejected };
       }
     }
   }
 
   if (side === "SELL") {
-    const holding = await Holding.findOne({ userId: user._id, ticker });
+    const holding = await withSession(Holding.findOne({ userId: user._id, ticker }), session);
     if (!holding || availableSharesOf(holding) < quantity) {
-      const rejected = await Order.create({
+      const rejected = await createOne(Order, {
         userId: user._id,
         ticker,
         side,
@@ -589,13 +602,13 @@ export const placeOrder = async (userInput, payload) => {
         rejectionReason: "Not enough available shares to sell",
         idempotencyKey: payload.idempotencyKey,
         expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
-      });
+      }, session);
       return { order: rejected };
     }
     if (type === "LIMIT") {
-      const reservedHolding = await reserveShares(user._id, ticker, quantity);
+      const reservedHolding = await reserveShares(user._id, ticker, quantity, session);
       if (!reservedHolding) {
-        const rejected = await Order.create({
+        const rejected = await createOne(Order, {
           userId: user._id,
           ticker,
           side,
@@ -611,7 +624,7 @@ export const placeOrder = async (userInput, payload) => {
           rejectionReason: "Not enough available shares to reserve for this pending limit order",
           idempotencyKey: payload.idempotencyKey,
           expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
-        });
+        }, session);
         return { order: rejected };
       }
       reservedShareQuantity = quantity;
@@ -624,9 +637,10 @@ export const placeOrder = async (userInput, payload) => {
     quote,
     totalEquity: snapshot.totalEquity,
     riskSettings,
+    session,
   });
 
-  const order = await Order.create({
+  const order = await createOne(Order, {
     userId: user._id,
     ticker,
     side,
@@ -647,16 +661,19 @@ export const placeOrder = async (userInput, payload) => {
     idempotencyKey: payload.idempotencyKey,
     tradePlanId: tradePlan?._id || null,
     expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
-  });
+  }, session);
 
   if (tradePlan) {
     tradePlan.orderId = order._id;
-    await tradePlan.save();
+    await tradePlan.save(sessionOptions(session));
   }
 
-  const filled = await attemptFillOrder(order);
+  const filled = await attemptFillOrderInTransaction(order, session);
   return { ...filled, order: filled.order || order };
 };
+
+export const placeOrder = async (userInput, payload) =>
+  withMongoTransaction((session) => placeOrderInTransaction(userInput, payload, session), { allowFallback: true });
 
 export const listOrders = async (userId, query = {}) => {
   const filter = { userId };

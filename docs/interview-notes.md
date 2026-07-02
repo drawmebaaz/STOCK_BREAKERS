@@ -79,6 +79,16 @@ Interview explanation:
 
 > Pending orders introduced a double-spend problem. I solved it by reserving cash for pending buy limits and reserving shares for pending sell limits, then consuming or releasing those reservations when the order fills, cancels, expires, or rejects.
 
+## Transaction-Ready Accounting
+
+Order creation and order fills touch multiple collections: user cash, holdings, orders, transactions, trade plans, and equity snapshots. The order engine now runs those critical paths through a MongoDB transaction wrapper and passes the session into the writes.
+
+Local Docker can use standalone MongoDB, where real transactions are unavailable. In that case, the wrapper detects the transaction capability error, logs a clear warning once, and runs the same accounting path without a session so the demo still works.
+
+Interview explanation:
+
+> The fill path is multi-document, so I made it transaction-ready with Mongoose sessions. Local standalone MongoDB falls back safely, while a replica-set production MongoDB can commit or abort the accounting changes together.
+
 ## Fallbacks
 
 The app keeps defensive behavior: Socket.IO polling fallback, Express-to-FastAPI timeout, degraded scenario response, tick-loop try/catch, per-order pending processing protection, and browser fallback data for GitHub Pages demo mode.

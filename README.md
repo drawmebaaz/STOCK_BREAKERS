@@ -45,6 +45,7 @@ Full app deployment:
 - Calculates simulated benchmark indexes such as `SBX_TOTAL` and sector benchmarks for portfolio comparison.
 - Supports market and limit orders with filled, pending, partially filled, cancelled, rejected, and expired states.
 - Reserves virtual cash for pending buy limit orders and reserves shares for pending sell limit orders so users cannot reuse committed funds or shares.
+- Wraps order creation and fill accounting in MongoDB transaction sessions when available, with a safe fallback for local standalone MongoDB.
 - Records executed fills separately from orders so pending and cancelled orders are not mixed with completed trades.
 - Helps users plan trades with thesis, stop-loss, target, confidence, and position-size checks.
 - Shows portfolio analytics such as closed gain/loss, open gain/loss, win rate, drawdown, concentration, and open planned risk.

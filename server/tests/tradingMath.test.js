@@ -8,6 +8,7 @@ import {
 } from "../services/tradingMath.js";
 import { estimateReservationAmount } from "../services/orderEngine.js";
 import { orderPlacementSchema } from "../middleware/validation.js";
+import { isTransactionUnavailableError } from "../utils/withMongoTransaction.js";
 
 const quote = {
   mid: 100,
@@ -63,6 +64,11 @@ test("market orders do not create long-lived reservations", () => {
     limitPrice: null,
   });
   assert.equal(reservation, 0);
+});
+
+test("transaction utility recognizes standalone MongoDB transaction errors", () => {
+  assert.equal(isTransactionUnavailableError(new Error("Transaction numbers are only allowed on a replica set member or mongos")), true);
+  assert.equal(isTransactionUnavailableError(new Error("ordinary validation problem")), false);
 });
 
 test("risk plan calculates max size and reward/risk", () => {

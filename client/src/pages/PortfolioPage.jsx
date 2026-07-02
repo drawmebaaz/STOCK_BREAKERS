@@ -24,6 +24,23 @@ function Metric({ label, value, sub, tone = "neutral" }) {
   );
 }
 
+function SummaryItem({ label, value, sub, tone = "neutral" }) {
+  const toneClass = {
+    positive: "text-emerald-300",
+    negative: "text-red-300",
+    warning: "text-amber-300",
+    neutral: "text-slate-50",
+  }[tone];
+
+  return (
+    <div className="min-w-0">
+      <p className="stat-label">{label}</p>
+      <p className={`mt-2 truncate text-2xl font-semibold ${toneClass}`}>{value}</p>
+      {sub && <p className="mt-1 text-xs leading-5 text-slate-500">{sub}</p>}
+    </div>
+  );
+}
+
 function AllocationRow({ item, total, color }) {
   const weight = total > 0 ? (item.value / total) * 100 : 0;
 
@@ -111,6 +128,11 @@ export default function PortfolioPage() {
   const positivePositions = enriched.filter((holding) => holding.pnl >= 0).length;
   const totalIndex = indexes.find((index) => index.symbol === "SBX_TOTAL");
   const benchmarkReturn = Number(totalIndex?.dayChangePercent || 0);
+  const realizedTradeCount = Number(analytics?.realizedTradeCount || 0);
+  const rMultipleCount = Number(analytics?.rMultipleCount || 0);
+  const hasOpenRisk = Number(analytics?.openRiskAmount || 0) > 0;
+  const hasDrawdown = Number(analytics?.maxDrawdown || 0) < 0;
+  const showPerformancePanel = Boolean(analytics && (realizedTradeCount > 0 || rMultipleCount > 0 || hasOpenRisk || hasDrawdown));
   const pieData = enriched.map((holding) => ({
     name: holding.ticker,
     value: +holding.currentValue.toFixed(2),
@@ -144,57 +166,72 @@ export default function PortfolioPage() {
       {error && <div className="alert-error">{error}</div>}
 
       {summary && (
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-          <Metric label="Total equity" value={currency(summary.totalValue)} />
-          <Metric label="Virtual cash" value={currency(summary.cash)} />
-          <Metric
-            label="Cash reserve"
-            value={`${cashReservePct.toFixed(1)}%`}
-            sub="of total equity"
-            tone={cashReservePct >= 20 ? "neutral" : "warning"}
-          />
-          <Metric label="Invested capital" value={currency(invested)} />
-          <Metric
-            label="Open gain/loss"
-            value={`${summary.pnl >= 0 ? "+" : ""}${currency(summary.pnl)}`}
-            sub={signedPercent(summary.pnlPct)}
-            tone={summary.pnl >= 0 ? "positive" : "negative"}
-          />
-          {totalIndex && (
-            <Metric
-              label="Market today"
-              value={signedPercent(benchmarkReturn, 1)}
-              sub="Context only; your gain/loss uses open positions"
-              tone={benchmarkReturn >= 0 ? "positive" : "negative"}
+        <div className="panel p-4">
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryItem label="Total equity" value={currency(summary.totalValue)} />
+            <SummaryItem
+              label="Virtual cash"
+              value={currency(summary.cash)}
+              sub={`${cashReservePct.toFixed(1)}% of account`}
+              tone={cashReservePct >= 20 ? "neutral" : "warning"}
             />
+            <SummaryItem label="Invested" value={currency(invested)} />
+            <SummaryItem
+              label="Open gain/loss"
+              value={`${summary.pnl >= 0 ? "+" : ""}${currency(summary.pnl)}`}
+              sub={signedPercent(summary.pnlPct)}
+              tone={summary.pnl >= 0 ? "positive" : "negative"}
+            />
+          </div>
+          {totalIndex && (
+            <div className="mt-4 border-t border-slate-800 pt-3 text-sm text-slate-500">
+              Simulated market today:{" "}
+              <span className={benchmarkReturn >= 0 ? "mono text-emerald-300" : "mono text-red-300"}>
+                {signedPercent(benchmarkReturn, 1)}
+              </span>
+              . This is context only; portfolio gain/loss uses your open positions.
+            </div>
           )}
         </div>
       )}
 
-      {analytics && (
-        <>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-            <Metric
-              label="Closed gain/loss"
-              value={`${analytics.realizedPnl >= 0 ? "+" : ""}${currency(analytics.realizedPnl)}`}
-              tone={analytics.realizedPnl >= 0 ? "positive" : "negative"}
-            />
-            <Metric
-              label="Open gain/loss"
-              value={`${analytics.unrealizedPnl >= 0 ? "+" : ""}${currency(analytics.unrealizedPnl)}`}
-              tone={analytics.unrealizedPnl >= 0 ? "positive" : "negative"}
-            />
-            <Metric label="Win rate" value={`${Number(analytics.winRate || 0).toFixed(0)}%`} />
-            <Metric label="Avg reward/risk result" value={analytics.averageRMultiple ? `${analytics.averageRMultiple.toFixed(2)}x` : "--"} />
-            <Metric label="Biggest drop" value={`${Number(analytics.maxDrawdown || 0).toFixed(1)}%`} tone={analytics.maxDrawdown < -8 ? "warning" : "neutral"} />
-            <Metric label="Open planned risk" value={currency(analytics.openRiskAmount || 0)} sub={`${Number(analytics.openRiskPercent || 0).toFixed(1)}% of equity`} />
-          </div>
-          {analytics.riskWarnings?.length > 0 && (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-              {analytics.riskWarnings[0]}
+      {showPerformancePanel && (
+        <div className="panel p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="section-title">Performance Snapshot</h2>
+              <p className="section-subtitle mt-1">Only metrics backed by your completed trade data are shown.</p>
             </div>
-          )}
-        </>
+            {realizedTradeCount > 0 && <span className="badge-neutral">{realizedTradeCount} closed trades</span>}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {realizedTradeCount > 0 && (
+              <>
+                <Metric
+                  label="Closed gain/loss"
+                  value={`${analytics.realizedPnl >= 0 ? "+" : ""}${currency(analytics.realizedPnl)}`}
+                  tone={analytics.realizedPnl >= 0 ? "positive" : "negative"}
+                />
+                <Metric label="Win rate" value={`${Number(analytics.winRate || 0).toFixed(0)}%`} />
+              </>
+            )}
+            {rMultipleCount > 0 && (
+              <Metric label="Avg result vs planned risk" value={`${analytics.averageRMultiple.toFixed(2)}x`} />
+            )}
+            {hasDrawdown && (
+              <Metric label="Biggest equity drop" value={`${Number(analytics.maxDrawdown || 0).toFixed(1)}%`} tone={analytics.maxDrawdown < -8 ? "warning" : "neutral"} />
+            )}
+            {hasOpenRisk && (
+              <Metric label="Open planned risk" value={currency(analytics.openRiskAmount || 0)} sub={`${Number(analytics.openRiskPercent || 0).toFixed(1)}% of equity`} />
+            )}
+          </div>
+        </div>
+      )}
+
+      {analytics?.riskWarnings?.length > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          {analytics.riskWarnings[0]}
+        </div>
       )}
 
       <div className="grid gap-6 2xl:grid-cols-[360px_1fr]">

@@ -511,6 +511,7 @@ const portfolioAnalytics = (state) => {
   const holdings = enrichHoldings(state.holdings);
   const summary = portfolioSummary(state);
   const sells = state.transactions.filter((txn) => txn.type === "sell");
+  const rMultiples = sells.map((txn) => txn.realizedR).filter((value) => value !== null && value !== undefined);
   const realizedPnl = sells.reduce((sum, txn) => sum + Number(txn.realizedPnl || 0), 0);
   const wins = sells.filter((txn) => Number(txn.realizedPnl || 0) > 0);
   const losses = sells.filter((txn) => Number(txn.realizedPnl || 0) < 0);
@@ -535,7 +536,8 @@ const portfolioAnalytics = (state) => {
     maxDrawdown: 0,
     openRiskAmount: 0,
     openRiskPercent: 0,
-    averageRMultiple: 0,
+    rMultipleCount: rMultiples.length,
+    averageRMultiple: rMultiples.length ? round(rMultiples.reduce((sum, value) => sum + Number(value || 0), 0) / rMultiples.length) : 0,
     tickerConcentration: holdings.map((holding) => ({
       ticker: holding.ticker,
       value: holding.currentValue,
@@ -549,6 +551,7 @@ const portfolioAnalytics = (state) => {
       warning: false,
     })),
     totalTrades: state.transactions.length,
+    realizedTradeCount: sells.length,
     plannedTradesCount: state.orders.filter((order) => order.tradePlanId).length,
     followedPlanRate: 0,
     riskWarnings: [],

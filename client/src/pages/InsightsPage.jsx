@@ -235,6 +235,8 @@ export default function InsightsPage() {
 
   const selectedStock = useMemo(() => stocks.find((stock) => stock.ticker === ticker), [stocks, ticker]);
   const livePrice = priceMap[ticker] ?? selectedStock?.price;
+  const activeEvents = result?.history?.activeEvents || result?.predict?.marketContext?.activeEvents || [];
+  const benchmark = result?.history?.benchmark || result?.predict?.marketContext?.benchmark;
 
   useEffect(() => {
     api.get("/ai/suggestions")
@@ -383,6 +385,35 @@ export default function InsightsPage() {
           {result.predict?.status === "degraded" && (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
               {result.predict.message || "Scenario service is using a simpler fallback right now."}
+            </div>
+          )}
+
+          {(activeEvents.length > 0 || benchmark) && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="panel p-4">
+                <h2 className="section-title">Current Simulation Context</h2>
+                <div className="mt-3 space-y-2">
+                  {activeEvents.length === 0 ? (
+                    <p className="text-sm text-slate-500">No active simulated event is affecting this symbol right now.</p>
+                  ) : (
+                    activeEvents.slice(0, 2).map((event) => (
+                      <p key={event.id} className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm text-slate-300">
+                        {event.headline}
+                      </p>
+                    ))
+                  )}
+                </div>
+              </div>
+              {benchmark && (
+                <div className="panel p-4">
+                  <h2 className="section-title">Benchmark Check</h2>
+                  <p className="mono mt-3 text-2xl font-semibold text-slate-50">{benchmark.symbol}</p>
+                  <p className={benchmark.dayChangePercent >= 0 ? "mt-2 text-sm text-emerald-300" : "mt-2 text-sm text-red-300"}>
+                    {signedPercent(benchmark.dayChangePercent, 1)} today in the simulated market
+                  </p>
+                  <p className="mt-2 text-sm text-slate-500">Use this as context, not as a trading signal.</p>
+                </div>
+              )}
             </div>
           )}
 

@@ -9,7 +9,7 @@ import {
   tickerSchema,
   validateBody,
 } from "../middleware/validation.js";
-import { getCandles, getLivePrices, getMarketStatus, getPriceHistory, getQuote } from "../utils/priceStore.js";
+import { getCandles, getIndex, getLivePrices, getMarketEvents, getMarketStatus, getPriceHistory, getQuote } from "../utils/priceStore.js";
 
 const router = Router();
 const ml = axios.create({
@@ -98,6 +98,8 @@ router.get("/history/:ticker", protect, (req, res) => {
       points: candles?.length || prices.length,
       quote: getQuote(result.data),
       marketStatus: getMarketStatus(),
+      activeEvents: getMarketEvents({ ticker: result.data }).slice(0, 3),
+      benchmark: getIndex("SBX_TOTAL"),
       source: "server-simulated-price-engine",
       simulationNotice: "Uses simulated in-app market data, not real market data.",
     });
@@ -110,6 +112,8 @@ router.get("/history/:ticker", protect, (req, res) => {
     currentPrice: stock.price,
     quote: getQuote(result.data),
     marketStatus: getMarketStatus(),
+    activeEvents: getMarketEvents({ ticker: result.data }).slice(0, 3),
+    benchmark: getIndex("SBX_TOTAL"),
     source: "server-simulated-price-engine",
     simulationNotice: "Rolling simulated market history maintained by the backend price engine.",
   });
@@ -128,9 +132,19 @@ router.post("/scenario", protect, validateBody(predictionSchema), async (req, re
   try {
     const { data } = await ml.post("/predict", req.body);
     const finalPrices = [data.stats?.p5_final, data.stats?.median_final, data.stats?.p95_final].map(Number);
+    const marketStatus = getMarketStatus();
+    const activeEvents = getMarketEvents({ ticker: req.body.ticker }).slice(0, 3);
+    const benchmark = getIndex("SBX_TOTAL");
     res.json({
       ...data,
       status: "ok",
+      marketContext: {
+        session: marketStatus.session,
+        simulatedTime: marketStatus.simulatedTime,
+        volatilityRegime: marketStatus.volatilityRegime,
+        activeEvents,
+        benchmark,
+      },
       scenario: {
         worstCase: finalPrices[0],
         baseCase: finalPrices[1],
@@ -140,7 +154,9 @@ router.post("/scenario", protect, validateBody(predictionSchema), async (req, re
         volatility: data.stats?.ann_volatility,
         maxDrawdownEstimate: data.stats?.var_95,
         plainEnglishRiskSummary:
-          "This is a simulated scenario range based on StockBreakers practice prices. It is useful for learning risk, not for predicting real markets.",
+          activeEvents.length > 0
+            ? "This simulated range includes current practice-market event context. Use it for learning risk, not for predicting real markets."
+            : "This is a simulated scenario range based on StockBreakers practice prices. It is useful for learning risk, not for predicting real markets.",
       },
     });
   } catch (err) {

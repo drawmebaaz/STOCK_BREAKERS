@@ -8,7 +8,7 @@ import {
   Transaction,
   User,
 } from "../models/index.js";
-import { getLivePrices, getQuote, isKnownTicker } from "../utils/priceStore.js";
+import { getLivePrices, getMarketStatus, getQuote, isKnownTicker } from "../utils/priceStore.js";
 import {
   calculateRiskPlan,
   calculateSlippage,
@@ -279,6 +279,14 @@ export const attemptFillOrder = async (orderInput) => {
   const quote = getQuote(order.ticker);
   if (!quote) return { order, warning: "Quote unavailable" };
 
+  const market = getMarketStatus();
+  if (order.type === "MARKET" && !market.allowsMarketOrders) {
+    order.status = order.filledQuantity > 0 ? "PARTIALLY_FILLED" : "REJECTED";
+    order.rejectionReason = "MARKET_CLOSED: market orders wait until the simulated market reopens";
+    await order.save();
+    return { order, rejected: true, reason: order.rejectionReason };
+  }
+
   const updatedAt = quote.updatedAt ? new Date(quote.updatedAt).getTime() : 0;
   if (updatedAt && Date.now() - updatedAt > 30000) {
     return { order, warning: "Quote is stale" };
@@ -346,6 +354,28 @@ export const placeOrder = async (userInput, payload) => {
     const error = new Error("Market quote is unavailable");
     error.status = 503;
     throw error;
+  }
+
+  const market = getMarketStatus();
+  if (type === "MARKET" && !market.allowsMarketOrders) {
+    const rejected = await Order.create({
+      userId: user._id,
+      ticker,
+      side,
+      type,
+      quantity,
+      limitPrice,
+      status: "REJECTED",
+      requestedPrice: quote.mid,
+      requestedBid: quote.bid,
+      requestedAsk: quote.ask,
+      remainingQuantity: quantity,
+      estimatedSlippage: calculateSlippage({ quote, side, quantity }),
+      rejectionReason: "MARKET_CLOSED: market orders can only fill during simulated trading sessions",
+      idempotencyKey: payload.idempotencyKey,
+      expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
+    });
+    return { order: rejected };
   }
 
   const quantity = Number(payload.quantity);

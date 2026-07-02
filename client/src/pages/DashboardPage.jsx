@@ -63,12 +63,15 @@ function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
 
 export default function DashboardPage() {
   const stocks = usePriceStore((s) => s.stocks);
+  const marketStatus = usePriceStore((s) => s.marketStatus);
   const summary = usePortfolioStore((s) => s.summary);
   const user = useAuthStore((s) => s.user);
   const updateWatchlist = useAuthStore((s) => s.updateWatchlist);
   const [watchlist, setWatchlist] = useState(user?.watchlist || []);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const [events, setEvents] = useState([]);
+  const [indexes, setIndexes] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -78,6 +81,23 @@ export default function DashboardPage() {
       updateWatchlist(nextWatchlist);
     }).catch(() => {});
   }, [updateWatchlist]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMarketContext = () => {
+      Promise.allSettled([api.get("/market/events"), api.get("/market/indexes")]).then(([eventResult, indexResult]) => {
+        if (cancelled) return;
+        if (eventResult.status === "fulfilled") setEvents(eventResult.value.data.events || []);
+        if (indexResult.status === "fulfilled") setIndexes(indexResult.value.data.indexes || []);
+      });
+    };
+    loadMarketContext();
+    const id = window.setInterval(loadMarketContext, 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const toggleWatch = async (ticker) => {
     const inList = watchlist.includes(ticker);
@@ -111,6 +131,8 @@ export default function DashboardPage() {
   const decliners = stocks.filter((stock) => stock.change < 0).length;
   const strongest = [...stocks].sort((a, b) => b.change - a.change)[0];
   const weakest = [...stocks].sort((a, b) => a.change - b.change)[0];
+  const totalIndex = indexes.find((index) => index.symbol === "SBX_TOTAL");
+  const session = marketStatus?.session || marketStatus?.status || stocks[0]?.marketSession || "OPEN";
 
   return (
     <div className="space-y-6">
@@ -138,6 +160,14 @@ export default function DashboardPage() {
             sub={signedPercent(summary.pnlPct)}
             tone={summary.pnl >= 0 ? "positive" : "negative"}
           />
+          {totalIndex && (
+            <Metric
+              label="Market benchmark"
+              value={signedPercent(totalIndex.dayChangePercent)}
+              sub={totalIndex.name}
+              tone={totalIndex.dayChangePercent >= 0 ? "positive" : "negative"}
+            />
+          )}
         </div>
       )}
 
@@ -196,6 +226,15 @@ export default function DashboardPage() {
         <aside className="space-y-4">
           <div className="panel p-4">
             <h2 className="section-title">Market Snapshot</h2>
+            <div className="mt-3 rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
+              <p className="stat-label">Session</p>
+              <p className={session === "OPEN" ? "mt-1 text-sm font-semibold text-emerald-300" : "mt-1 text-sm font-semibold text-amber-300"}>
+                {session.replace("_", " ")}{marketStatus?.simulatedTime ? ` - Sim ${marketStatus.simulatedTime}` : ""}
+              </p>
+              {session !== "OPEN" && (
+                <p className="mt-1 text-xs text-slate-500">Market orders may wait or reject depending on the session.</p>
+              )}
+            </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
                 <p className="stat-label">Gainers</p>
@@ -219,6 +258,25 @@ export default function DashboardPage() {
                   {weakest ? `${weakest.ticker} ${signedPercent(weakest.change)}` : "--"}
                 </span>
               </div>
+            </div>
+          </div>
+
+          <div className="panel p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="section-title">Simulated Events</h2>
+              <span className="badge-neutral">{events.length}</span>
+            </div>
+            <div className="mt-4 space-y-2">
+              {events.length === 0 ? (
+                <p className="text-sm text-slate-500">No active practice-market events right now.</p>
+              ) : (
+                events.slice(0, 3).map((event) => (
+                  <div key={event.id} className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
+                    <p className="text-sm text-slate-200">{event.headline}</p>
+                    <p className="mt-1 text-xs text-slate-500">{event.scope.toLowerCase()} event - impact fades over ticks</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 

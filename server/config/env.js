@@ -42,6 +42,11 @@ const schema = z.object({
   LOG_FORMAT: z.preprocess(normalizeLogFormat, z.enum(logFormats).default("dev")),
   TRUST_PROXY: z.preprocess(parseBoolean, z.boolean()).default(false),
   STATIC_DIR: z.preprocess(emptyToUndefined, z.string().optional()),
+  MARKET_CLOCK_ENABLED: z.preprocess(parseBoolean, z.boolean()).default(true),
+  MARKET_DEMO_ALWAYS_OPEN: z.preprocess(parseBoolean, z.boolean()).default(false),
+  SIM_MINUTES_PER_TICK: z.coerce.number().int().positive().default(5),
+  AFTER_HOURS_MINUTES_PER_TICK: z.coerce.number().int().positive().default(30),
+  MARKET_TICK_INTERVAL_MS: z.coerce.number().int().positive().default(4000),
 });
 
 const result = schema.safeParse(process.env);

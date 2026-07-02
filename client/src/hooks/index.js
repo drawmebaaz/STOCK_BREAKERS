@@ -41,7 +41,16 @@ export const useSocket = () => {
     };
     const handlePrices = (stocks) => {
       setStocks(stocks);
-      const market = stocks?.[0]?.marketStatus ? { status: stocks[0].marketStatus, regime: stocks[0].regime } : null;
+      const first = stocks?.[0];
+      const market = first?.marketStatus
+        ? {
+            status: first.marketStatus,
+            session: first.marketSession || first.marketStatus,
+            regime: first.regime,
+            volatilityRegime: first.volatilityRegime,
+            activeEventSummary: first.activeEventSummary,
+          }
+        : null;
       if (market) setMarketStatus(market);
     };
 

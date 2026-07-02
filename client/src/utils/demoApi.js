@@ -83,7 +83,11 @@ const withQuote = (stock) => {
     dayLow: round(Math.min(...history.slice(-90))),
     dayVolume: volume * 90,
     marketStatus: "OPEN",
+    marketSession: "OPEN",
     regime: "NORMAL",
+    volatilityRegime: "NORMAL",
+    activeEventCount: 0,
+    activeEventSummary: null,
     liquidityScore: stock.ticker === "COIN" || stock.ticker === "PLTR" ? 0.76 : 0.9,
     averageVolume: volume,
     updatedAt: new Date().toISOString(),
@@ -677,6 +681,64 @@ const suggestions = () => {
   return respond({ trending_up: trendingUp, dip_buys: dipBuys });
 };
 
+const demoMarketStatus = () => ({
+  session: "OPEN",
+  status: "OPEN",
+  isOpen: true,
+  allowsMarketOrders: true,
+  simulatedDate: "2026-07-01",
+  simulatedTime: "10:35",
+  tick: priceHistory.AAPL?.length || 120,
+  minutesPerTick: 5,
+  nextEvent: "MARKET_CLOSE",
+  nextEventInSimMinutes: 325,
+  volatilityRegime: "NORMAL",
+  regime: "NORMAL",
+  label: "Open simulated session",
+});
+
+const demoEvents = () => [
+  {
+    id: "demo-event-1",
+    type: "MARKET_NEWS",
+    scope: "MARKET",
+    headline: "Simulated Event: practice-market demand is steady",
+    description: "Browser demo event only. No real news is used.",
+    severity: "LOW",
+    currentImpact: { sentiment: 4, demand: 3, liquidity: 0, volatility: 1 },
+  },
+];
+
+const demoIndexes = () => {
+  const total = liveStocks.reduce((sum, stock) => sum + stock.price, 0) / liveStocks.length;
+  const sectors = [...new Set(liveStocks.map((stock) => stock.sector))];
+  return [
+    {
+      symbol: "SBX_TOTAL",
+      name: "StockBreakers Total Market",
+      members: liveStocks.map((stock) => stock.ticker),
+      currentValue: round(total),
+      dayOpen: round(total * 0.997),
+      dayChangePercent: 0.3,
+      history: [],
+    },
+    ...sectors.map((sector) => {
+      const members = liveStocks.filter((stock) => stock.sector === sector);
+      const value = members.reduce((sum, stock) => sum + stock.price, 0) / members.length;
+      return {
+        symbol: `SBX_${sector.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 8)}`,
+        name: `${sector} Benchmark`,
+        sector,
+        members: members.map((stock) => stock.ticker),
+        currentValue: round(value),
+        dayOpen: round(value * 0.998),
+        dayChangePercent: 0.2,
+        history: [],
+      };
+    }),
+  ];
+};
+
 const handleGet = (url) => {
   const [path, queryString = ""] = url.split("?");
   const query = new URLSearchParams(queryString);
@@ -699,7 +761,39 @@ const handleGet = (url) => {
     return respond({ orders, page: 1, limit: 50 });
   }
   if (path === "/risk/settings") return respond({ settings: state.riskSettings || defaultRiskSettings() });
-  if (path === "/market/status") return respond({ market: { status: "OPEN", label: "Open simulated session", regime: "NORMAL" } });
+  if (path === "/market/status") return respond({ market: demoMarketStatus() });
+  if (path === "/market/events") return respond({ events: demoEvents(), simulationNotice: "These are generated simulation events, not real news." });
+  if (path === "/market/indexes") return respond({ indexes: demoIndexes(), simulationNotice: "Simulated benchmark indexes for practice comparison." });
+  if (path.startsWith("/market/indexes/")) {
+    const symbol = path.split("/").at(-1).toUpperCase();
+    const index = demoIndexes().find((item) => item.symbol === symbol);
+    return index ? respond({ index }) : fail(404, "Benchmark index not found");
+  }
+  if (path.startsWith("/market/candles/")) {
+    const ticker = path.split("/").at(-1).toUpperCase();
+    const prices = priceHistory[ticker];
+    if (!prices) return fail(404, "Market data not found");
+    return respond({
+      ticker,
+      range: query.get("range") || "1D",
+      interval: query.get("interval") || "5m",
+      candles: prices.slice(-120).map((price, index) => ({
+        ticker,
+        timestamp: new Date(Date.now() - (120 - index) * 60000).toISOString(),
+        simulatedDate: "2026-07-01",
+        simulatedTime: "10:35",
+        session: "OPEN",
+        open: price,
+        high: round(price * 1.002),
+        low: round(price * 0.998),
+        close: price,
+        volume: 100000,
+        regime: "NORMAL",
+      })),
+      quote: liveStocks.find((stock) => stock.ticker === ticker),
+      market: demoMarketStatus(),
+    });
+  }
   if (path.startsWith("/ai/history/")) {
     const ticker = path.split("/").at(-1).toUpperCase();
     const prices = priceHistory[ticker];
@@ -709,6 +803,9 @@ const handleGet = (url) => {
       prices,
       points: prices.length,
       currentPrice: liveStocks.find((stock) => stock.ticker === ticker)?.price,
+      marketStatus: demoMarketStatus(),
+      activeEvents: demoEvents(),
+      benchmark: demoIndexes()[0],
       source: "browser-demo",
     });
   }
@@ -799,6 +896,13 @@ const handlePost = (url, body = {}) => {
     data: {
       ...res.data,
       status: "ok",
+      marketContext: {
+        session: "OPEN",
+        simulatedTime: "10:35",
+        volatilityRegime: "NORMAL",
+        activeEvents: demoEvents(),
+        benchmark: demoIndexes()[0],
+      },
       scenario: {
         worstCase: res.data.stats.p5_final,
         baseCase: res.data.stats.median_final,

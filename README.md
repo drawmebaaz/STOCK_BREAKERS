@@ -3,6 +3,7 @@
 StockBreakers is a risk-first paper-trading simulator. It combines a clean React workspace, authenticated portfolio accounting, real-time practice prices, market and limit orders, pending order handling, virtual fills, trade history, scenario analysis, and discipline review.
 
 > Educational paper-trading app only. StockBreakers does not provide financial advice and does not execute real trades.
+> Prices, events, sessions, benchmarks, and scenario ranges are simulated for learning. They are not real market data.
 
 [Live Demo](https://drawmebaaz.github.io/STOCK_BREAKERS/)
 
@@ -36,7 +37,12 @@ Full app deployment:
 ## What It Does
 
 - Keeps each user account separate with its own virtual cash, watchlist, holdings, orders, and history.
+- Runs a simulated market clock with pre-market, open, after-hours, and closed sessions.
+- Moves prices through factor-based simulation using market sentiment, sector behavior, company profiles, liquidity, volatility, and generated events.
+- Generates simulated market/news/earnings-like events that can widen spreads, increase volatility, and affect practice prices.
 - Streams simulated market quotes with bid, ask, spread, volume, day range, and rolling candle history.
+- Stores OHLCV candles for each ticker so charts and scenario inputs have open, high, low, close, and volume context.
+- Calculates simulated benchmark indexes such as `SBX_TOTAL` and sector benchmarks for portfolio comparison.
 - Supports market and limit orders with filled, pending, partially filled, cancelled, rejected, and expired states.
 - Records executed fills separately from orders so pending and cancelled orders are not mixed with completed trades.
 - Helps users plan trades with thesis, stop-loss, target, confidence, and position-size checks.
@@ -49,9 +55,11 @@ Full app deployment:
 Trading workspace:
 
 - Real-time simulated market prices over Socket.IO
+- Simulated session status with market open/closed context
 - Market watch with searchable stocks and watchlist controls
 - Market and limit order ticket
 - Bid/ask, spread, estimated slippage, cash-after-order, and position-after-order visibility
+- Active simulated event warning for selected stocks
 - Stop-loss, target, thesis, confidence, setup type, and invalidation notes
 - Position-size warning based on per-user risk settings
 - Pending order result and cancel flow
@@ -64,10 +72,12 @@ Portfolio and history:
 - Closed gain/loss, win rate, drawdown, open planned risk, and exposure warnings
 - Trade history with fill price, slippage, closed gain/loss, position-after-trade, and order IDs
 - Separate Orders page for pending, filled, cancelled, rejected, and partially filled orders
+- Portfolio-vs-benchmark comparison against the simulated total market
 
 Scenario and review:
 
 - Backend-maintained rolling price history per stock
+- Simulated market session, event, and benchmark context around scenario runs
 - Scenario range with lower, middle, and upper cases
 - Risk level and plain-language notes about recent price behavior
 - Stock ideas with short reasons for practice decisions
@@ -108,6 +118,12 @@ Browser
 Express API
   |-- Auth, orders, fills, holdings, transactions, watchlist
   |-- Order engine with bid/ask, slippage, partial fills, and idempotency
+  |-- MarketClock sessions and simulated time
+  |-- EventEngine for generated market/news/earnings-like events
+  |-- FactorPricingEngine for bounded simulated price movement
+  |-- CandleStore for in-memory OHLCV records
+  |-- Simulated benchmark indexes
+  |-- Market health metrics
   |-- Risk settings, portfolio analytics, and discipline summary
   |-- Backend rolling quote and candle history
   |-- Zod validation and security middleware
@@ -118,6 +134,32 @@ FastAPI Scenario Service
   |-- Risk level calculation
   |-- Practice stock ideas
 ```
+
+## Market Simulation Engine
+
+StockBreakers does not stream real exchange data. It runs an in-app simulation engine designed to make paper trading more realistic and easier to explain.
+
+Tick flow:
+
+```text
+MarketClock
+  -> EventEngine
+  -> MarketState
+  -> FactorPricingEngine
+  -> CandleStore
+  -> BenchmarkIndex engine
+  -> Socket.IO broadcast
+  -> OrderEngine pending-order checks
+```
+
+MarketClock separates simulated market time from real server time. Instrument profiles give every ticker a personality: sector, style, volatility, liquidity, beta, investor confidence, demand, base spread, and average volume.
+
+The pricing engine combines those profile values with market sentiment, sector sentiment, active simulated events, liquidity, volatility regime, and bounded noise. Generated events are clearly labeled as simulated. They are not real news.
+
+Simulated benchmark indexes compare portfolio performance against the generated market:
+
+- `SBX_TOTAL`: all instruments
+- sector indexes: Technology, Financials, Healthcare, Consumer, Automotive, Entertainment
 
 ## Tech Stack
 
@@ -223,7 +265,11 @@ RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=250
 TRUST_PROXY=false
 STATIC_DIR=
-MARKET_SESSION_ENABLED=true
+MARKET_CLOCK_ENABLED=true
+MARKET_DEMO_ALWAYS_OPEN=false
+SIM_MINUTES_PER_TICK=5
+AFTER_HOURS_MINUTES_PER_TICK=30
+MARKET_TICK_INTERVAL_MS=4000
 ```
 
 Frontend:
@@ -254,7 +300,12 @@ Market and portfolio:
 - `GET /api/stocks`
 - `GET /api/stocks/:ticker`
 - `GET /api/market/status`
-- `GET /api/market/candles/:ticker`
+- `GET /api/market/events`
+- `GET /api/market/events?ticker=AAPL`
+- `GET /api/market/candles/:ticker?range=1D&interval=5m`
+- `GET /api/market/indexes`
+- `GET /api/market/indexes/:symbol`
+- `GET /api/market/health`
 - `POST /api/orders`
 - `GET /api/orders`
 - `GET /api/orders/:id`
@@ -292,6 +343,14 @@ Ops:
 - `GET /health` on the research service
 - `GET /ready` on the research service
 
+Development-only simulation controls:
+
+- `GET /api/sim/state`
+- `POST /api/sim/shock`
+- `POST /api/sim/event`
+- `POST /api/sim/fast-forward`
+- `POST /api/sim/reset`
+
 ## Quality Checks
 
 ```bash
@@ -308,6 +367,10 @@ VITE_DEMO_MODE=true VITE_BASE_PATH=/STOCK_BREAKERS/ npm run build
 cd server
 npm test
 ```
+
+## Interview Notes
+
+See [docs/interview-notes.md](docs/interview-notes.md) for the market-engine explanation, resume bullet, design choices, trade-offs, and limitations.
 
 ```bash
 cd server

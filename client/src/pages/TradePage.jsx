@@ -86,6 +86,7 @@ export default function TradePage() {
   const { user, updateBalance } = useAuthStore();
   const { holdings, summary } = usePortfolioStore();
   const stocks = usePriceStore((s) => s.stocks);
+  const marketStatus = usePriceStore((s) => s.marketStatus);
 
   const [ticker, setTicker] = useState(paramTicker || "AAPL");
   const [side, setSide] = useState("BUY");
@@ -107,6 +108,7 @@ export default function TradePage() {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState("");
   const [resultOrder, setResultOrder] = useState(null);
+  const [events, setEvents] = useState([]);
 
   const stock = stocks.find((item) => item.ticker === ticker);
   const holding = holdings.find((item) => item.ticker === ticker);
@@ -139,11 +141,15 @@ export default function TradePage() {
   const maxRiskAmount = totalEquity * (maxRiskPercent / 100);
   const maxQtyByRisk = riskPerShare > 0 ? Math.floor(maxRiskAmount / riskPerShare) : 0;
   const tickerExposure = totalEquity > 0 ? ((positionAfter * mid) / totalEquity) * 100 : 0;
+  const session = marketStatus?.session || marketStatus?.status || stock?.marketSession || "OPEN";
 
   const warnings = [
     side === "BUY" && cashAfter < 0 ? "This order needs more virtual cash than available." : null,
     side === "SELL" && qty > sharesHeld ? "You do not hold enough shares to sell this quantity." : null,
     orderType === "LIMIT" && !Number(limitPrice) ? "Enter a limit price for this order." : null,
+    orderType === "MARKET" && session === "CLOSED" ? "The simulated market is closed. Market orders will not fill right now." : null,
+    session !== "OPEN" && session !== "CLOSED" ? "This session has lower liquidity, so spread and slippage may be wider." : null,
+    events.length > 0 ? "A simulated event is active for this stock. Review size and stop-loss carefully." : null,
     side === "BUY" && stopLoss > 0 && stopLoss >= fillEstimate ? "Stop-loss should be below the expected entry price." : null,
     side === "BUY" && targetPrice > 0 && targetPrice <= fillEstimate ? "Target should be above the expected entry price." : null,
     side === "BUY" && riskPerShare > 0 && maxQtyByRisk > 0 && qty > maxQtyByRisk
@@ -176,6 +182,20 @@ export default function TradePage() {
     setError("");
     setResultOrder(null);
   }, [ticker, side, orderType, quantity, limitPrice]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/market/events?ticker=${ticker}`)
+      .then(({ data }) => {
+        if (!cancelled) setEvents(data.events || []);
+      })
+      .catch(() => {
+        if (!cancelled) setEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
 
   const updatePlan = (field, value) => {
     setPlan((current) => ({ ...current, [field]: value }));
@@ -279,9 +299,16 @@ export default function TradePage() {
                 <SummaryRow label="Ask" value={currency(ask)} />
                 <SummaryRow label="Spread" value={currency(stock.spread || ask - bid)} />
                 <SummaryRow label="Held" value={`${sharesHeld} shares`} />
+                <SummaryRow label="Session" value={session.replace("_", " ")} tone={session === "OPEN" ? "positive" : "warning"} />
+                <SummaryRow label="Volume" value={Number(stock.volume || 0).toLocaleString("en-IN")} />
                 <SummaryRow label="Day low" value={currency(stock.dayLow)} />
                 <SummaryRow label="Day high" value={currency(stock.dayHigh)} />
               </div>
+              {events.length > 0 && (
+                <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                  {events[0].headline}
+                </div>
+              )}
             </div>
           ) : (
             <div className="empty-state mt-4 min-h-40">Connecting to prices...</div>
@@ -428,7 +455,7 @@ export default function TradePage() {
                 <SummaryRow label="Max size by risk" value={maxQtyByRisk > 0 ? `${maxQtyByRisk} shares` : "--"} />
               </div>
               <p className="mt-5 text-xs leading-5 text-slate-500">
-                Market orders fill against ask for buys and bid for sells. Limit orders may stay pending until the simulated quote reaches your price.
+                Market orders fill against ask for buys and bid for sells during allowed simulated sessions. Limit orders may stay pending until the simulated quote reaches your price.
               </p>
             </aside>
           </div>

@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { usePortfolioStore, usePriceStore } from "../stores/index.js";
 import { usePortfolio } from "../hooks/index.js";
+import { api } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
 
 const COLORS = ["#bc9042", "#7ea4ce", "#3fb77c", "#c9973f", "#dc6b69", "#8b97a6", "#c7794d", "#68c8c3"];
@@ -64,6 +65,21 @@ export default function PortfolioPage() {
   const { refresh } = usePortfolio();
   const priceMap = usePriceStore((s) => s.priceMap);
   const stocks = usePriceStore((s) => s.stocks);
+  const [indexes, setIndexes] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/market/indexes")
+      .then(({ data }) => {
+        if (!cancelled) setIndexes(data.indexes || []);
+      })
+      .catch(() => {
+        if (!cancelled) setIndexes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const baseEnriched = holdings.map((holding) => {
     const instrument = stocks.find((stock) => stock.ticker === holding.ticker);
@@ -93,6 +109,10 @@ export default function PortfolioPage() {
   const largest = enriched.reduce((max, holding) => Math.max(max, holding.currentValue), 0);
   const largestWeight = marketValue > 0 ? (largest / marketValue) * 100 : 0;
   const positivePositions = enriched.filter((holding) => holding.pnl >= 0).length;
+  const totalIndex = indexes.find((index) => index.symbol === "SBX_TOTAL");
+  const portfolioReturn = Number(summary?.pnlPct || 0);
+  const benchmarkReturn = Number(totalIndex?.dayChangePercent || 0);
+  const alpha = portfolioReturn - benchmarkReturn;
   const pieData = enriched.map((holding) => ({
     name: holding.ticker,
     value: +holding.currentValue.toFixed(2),
@@ -142,6 +162,14 @@ export default function PortfolioPage() {
             sub={signedPercent(summary.pnlPct)}
             tone={summary.pnl >= 0 ? "positive" : "negative"}
           />
+          {totalIndex && (
+            <Metric
+              label="Vs benchmark"
+              value={signedPercent(alpha, 1)}
+              sub={`Portfolio ${signedPercent(portfolioReturn, 1)} / market ${signedPercent(benchmarkReturn, 1)}`}
+              tone={alpha >= 0 ? "positive" : "negative"}
+            />
+          )}
         </div>
       )}
 

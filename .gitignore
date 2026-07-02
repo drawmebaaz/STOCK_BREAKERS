@@ -8,6 +8,7 @@ logs/
 artifacts/
 
 open.txt
+open.md
 
 # Environment files
 .env

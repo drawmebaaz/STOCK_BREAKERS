@@ -33,6 +33,9 @@ const orderPublicShape = (order) => {
   };
 };
 
+const availableCashOf = (user) => Math.max(0, Number(user?.cashBalance || 0) - Number(user?.reservedCash || 0));
+const availableSharesOf = (holding) => Math.max(0, Number(holding?.quantity || 0) - Number(holding?.reservedQuantity || 0));
+
 export const getOrCreateRiskSettings = async (userId) => {
   const existing = await RiskSettings.findOne({ userId });
   if (existing) return existing;
@@ -58,6 +61,8 @@ export const calculatePortfolioSnapshot = async (userId, userDoc = null) => {
 
   return {
     cash: roundMoney(cash),
+    reservedCash: roundMoney(Number(user?.reservedCash || 0)),
+    availableCash: roundMoney(availableCashOf(user)),
     marketValue: roundMoney(marketValue),
     totalEquity: roundMoney(cash + marketValue),
     invested: roundMoney(invested),
@@ -83,6 +88,111 @@ const estimateWorstCaseCost = ({ quote, side, quantity, type, limitPrice }) => {
     ? Math.min(Number(limitPrice), basePrice + Math.abs(slippage))
     : basePrice + slippage;
   return Math.max(0, price * quantity);
+};
+
+export const estimateReservationAmount = ({ quote, side, quantity, type, limitPrice }) => {
+  if (type !== "LIMIT" || side !== "BUY") return 0;
+  const limit = Number(limitPrice || 0);
+  if (limit <= 0) return 0;
+  const slippageBuffer = Math.abs(calculateSlippage({ quote, side, quantity })) * quantity;
+  return roundMoney(limit * quantity + slippageBuffer, 2);
+};
+
+export const reserveCash = async (userId, amount) => {
+  const value = roundMoney(amount);
+  if (value <= 0) return null;
+  return User.findOneAndUpdate(
+    {
+      _id: userId,
+      $expr: {
+        $gte: [
+          { $subtract: ["$cashBalance", { $ifNull: ["$reservedCash", 0] }] },
+          value,
+        ],
+      },
+    },
+    { $inc: { reservedCash: value } },
+    { new: true, runValidators: true }
+  );
+};
+
+export const releaseCash = async (userId, amount) => {
+  const value = roundMoney(amount);
+  if (value <= 0) return null;
+  const user = await User.findById(userId);
+  if (!user) return null;
+  user.reservedCash = roundMoney(Math.max(0, Number(user.reservedCash || 0) - value));
+  return user.save();
+};
+
+export const consumeReservedCash = async (userId, reservedAmount, actualCost) => {
+  const reserved = roundMoney(reservedAmount);
+  const cost = roundMoney(actualCost);
+  const user = await User.findById(userId);
+  if (!user) return null;
+  const availableIncludingThisReservation = availableCashOf(user) + reserved;
+  if (availableIncludingThisReservation < cost) return null;
+  user.cashBalance = roundMoney(Number(user.cashBalance || 0) - cost);
+  user.reservedCash = roundMoney(Math.max(0, Number(user.reservedCash || 0) - reserved));
+  return user.save();
+};
+
+export const reserveShares = async (userId, ticker, quantity) => {
+  const qty = Number(quantity || 0);
+  if (qty <= 0) return null;
+  return Holding.findOneAndUpdate(
+    {
+      userId,
+      ticker,
+      $expr: {
+        $gte: [
+          { $subtract: ["$quantity", { $ifNull: ["$reservedQuantity", 0] }] },
+          qty,
+        ],
+      },
+    },
+    { $inc: { reservedQuantity: qty } },
+    { new: true, runValidators: true }
+  );
+};
+
+export const releaseShares = async (userId, ticker, quantity) => {
+  const qty = Number(quantity || 0);
+  if (qty <= 0) return null;
+  const holding = await Holding.findOne({ userId, ticker });
+  if (!holding) return null;
+  holding.reservedQuantity = Math.max(0, Number(holding.reservedQuantity || 0) - qty);
+  return holding.save();
+};
+
+export const consumeReservedShares = async (userId, ticker, quantity) => {
+  const qty = Number(quantity || 0);
+  if (qty <= 0) return null;
+  const holding = await Holding.findOne({ userId, ticker });
+  if (!holding || Number(holding.quantity || 0) < qty) return null;
+  holding.quantity = Math.max(0, Number(holding.quantity || 0) - qty);
+  holding.reservedQuantity = Math.max(0, Number(holding.reservedQuantity || 0) - qty);
+  return holding;
+};
+
+const reservationPortionForFill = (order, fillQuantity) => {
+  const remainingBeforeFill = Number(order.remainingQuantity || 0);
+  if (remainingBeforeFill <= 0) return 0;
+  return roundMoney((Number(order.reservedCashAmount || 0) / remainingBeforeFill) * fillQuantity);
+};
+
+const releaseOrderReservation = async (order) => {
+  if (!order || order.reservationStatus !== "RESERVED") return;
+  if (Number(order.reservedCashAmount || 0) > 0) {
+    await releaseCash(order.userId, order.reservedCashAmount);
+    order.reservedCashAmount = 0;
+  }
+  if (Number(order.reservedShareQuantity || 0) > 0) {
+    await releaseShares(order.userId, order.ticker, order.reservedShareQuantity);
+    order.reservedShareQuantity = 0;
+  }
+  order.reservationStatus = "RELEASED";
+  order.reservationReleasedAt = new Date();
 };
 
 const createPlanIfNeeded = async ({ userId, payload, quote, totalEquity, riskSettings }) => {
@@ -131,14 +241,26 @@ const createPlanIfNeeded = async ({ userId, payload, quote, totalEquity, riskSet
 
 const applyBuyFill = async ({ user, order, quote, fillQuantity, fillPrice, tradePlan }) => {
   const total = roundMoney(fillQuantity * fillPrice);
-  const freshUser = await User.findOneAndUpdate(
-    { _id: user._id, cashBalance: { $gte: total } },
-    { $inc: { cashBalance: -total } },
-    { new: true, runValidators: true }
-  );
+  const reservedPortion = reservationPortionForFill(order, fillQuantity);
+  const freshUser = reservedPortion > 0
+    ? await consumeReservedCash(user._id, reservedPortion, total)
+    : await User.findOneAndUpdate(
+      {
+        _id: user._id,
+        $expr: {
+          $gte: [
+            { $subtract: ["$cashBalance", { $ifNull: ["$reservedCash", 0] }] },
+            total,
+          ],
+        },
+      },
+      { $inc: { cashBalance: -total } },
+      { new: true, runValidators: true }
+    );
   if (!freshUser) {
     return { rejected: true, reason: "Insufficient virtual cash for the fill price" };
   }
+  order.reservedCashAmount = roundMoney(Math.max(0, Number(order.reservedCashAmount || 0) - reservedPortion));
 
   const holding = await Holding.findOne({ userId: user._id, ticker: order.ticker });
   if (holding) {
@@ -187,7 +309,7 @@ const applyBuyFill = async ({ user, order, quote, fillQuantity, fillPrice, trade
 };
 
 const applySellFill = async ({ user, order, quote, fillQuantity, fillPrice, tradePlan }) => {
-  const holding = await Holding.findOne({ userId: user._id, ticker: order.ticker });
+  let holding = await Holding.findOne({ userId: user._id, ticker: order.ticker });
   if (!holding || holding.quantity < fillQuantity) {
     return { rejected: true, reason: "Not enough shares available to sell" };
   }
@@ -198,7 +320,14 @@ const applySellFill = async ({ user, order, quote, fillQuantity, fillPrice, trad
   const plannedRisk = Number(tradePlan?.plannedRiskAmount || 0);
   const realizedR = plannedRisk > 0 ? roundMoney(realizedPnl / plannedRisk, 2) : null;
 
-  holding.quantity -= fillQuantity;
+  if (Number(order.reservedShareQuantity || 0) > 0) {
+    holding = await consumeReservedShares(user._id, order.ticker, fillQuantity);
+    if (!holding) return { rejected: true, reason: "Reserved shares were not available for this fill" };
+    order.reservedShareQuantity = Math.max(0, Number(order.reservedShareQuantity || 0) - fillQuantity);
+  } else {
+    if (availableSharesOf(holding) < fillQuantity) return { rejected: true, reason: "Not enough available shares to sell" };
+    holding.quantity -= fillQuantity;
+  }
   holding.totalInvested = roundMoney(Math.max(0, holding.totalInvested - avgCostBefore * fillQuantity));
   if (holding.quantity <= 0) {
     await holding.deleteOne();
@@ -272,6 +401,7 @@ export const attemptFillOrder = async (orderInput) => {
 
   if (order.expiresAt && new Date(order.expiresAt).getTime() < Date.now()) {
     order.status = "EXPIRED";
+    await releaseOrderReservation(order);
     await order.save();
     return { order };
   }
@@ -320,11 +450,18 @@ export const attemptFillOrder = async (orderInput) => {
   if (result.rejected) {
     order.status = order.filledQuantity > 0 ? "PARTIALLY_FILLED" : "REJECTED";
     order.rejectionReason = result.reason;
+    if (order.status === "REJECTED") await releaseOrderReservation(order);
     await order.save();
     return { order, rejected: true, reason: result.reason };
   }
 
   await updateOrderAfterFill({ order, fillQuantity, fillPrice, quote, slippage: Math.abs(slippage) });
+  if (order.status === "FILLED" && order.reservationStatus === "RESERVED") {
+    await releaseOrderReservation(order);
+    order.reservationStatus = "CONSUMED";
+    order.reservationReleasedAt = new Date();
+    await order.save();
+  }
   const snapshot = await saveEquitySnapshot(order.userId, result.user);
   return { order, transaction: result.transaction, snapshot };
 };
@@ -339,6 +476,8 @@ export const placeOrder = async (userInput, payload) => {
   const ticker = String(payload.ticker || "").toUpperCase();
   const side = String(payload.side || "").toUpperCase();
   const type = String(payload.type || "MARKET").toUpperCase();
+  const quantity = Number(payload.quantity);
+  const limitPrice = type === "LIMIT" ? Number(payload.limitPrice) : null;
 
   if (!isKnownTicker(ticker)) {
     const error = new Error("Stock is not available in the simulator");
@@ -378,14 +517,14 @@ export const placeOrder = async (userInput, payload) => {
     return { order: rejected };
   }
 
-  const quantity = Number(payload.quantity);
-  const limitPrice = type === "LIMIT" ? Number(payload.limitPrice) : null;
   const riskSettings = await getOrCreateRiskSettings(user._id);
   const snapshot = await calculatePortfolioSnapshot(user._id, user);
+  let reservedCashAmount = 0;
+  let reservedShareQuantity = 0;
 
   if (side === "BUY") {
     const worstCaseCost = estimateWorstCaseCost({ quote, side, quantity, type, limitPrice });
-    if (Number(user.cashBalance || 0) < worstCaseCost) {
+    if (availableCashOf(user) < worstCaseCost) {
       const rejected = await Order.create({
         userId: user._id,
         ticker,
@@ -399,17 +538,41 @@ export const placeOrder = async (userInput, payload) => {
         requestedAsk: quote.ask,
         remainingQuantity: quantity,
         estimatedSlippage: calculateSlippage({ quote, side, quantity }),
-        rejectionReason: "Insufficient virtual cash for this order",
+        rejectionReason: "Insufficient available virtual cash for this order",
         idempotencyKey: payload.idempotencyKey,
         expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
       });
       return { order: rejected };
     }
+    if (type === "LIMIT") {
+      reservedCashAmount = estimateReservationAmount({ quote, side, quantity, type, limitPrice });
+      const reservedUser = await reserveCash(user._id, reservedCashAmount);
+      if (!reservedUser) {
+        const rejected = await Order.create({
+          userId: user._id,
+          ticker,
+          side,
+          type,
+          quantity,
+          limitPrice,
+          status: "REJECTED",
+          requestedPrice: quote.mid,
+          requestedBid: quote.bid,
+          requestedAsk: quote.ask,
+          remainingQuantity: quantity,
+          estimatedSlippage: calculateSlippage({ quote, side, quantity }),
+          rejectionReason: "Insufficient available virtual cash for this pending limit order",
+          idempotencyKey: payload.idempotencyKey,
+          expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
+        });
+        return { order: rejected };
+      }
+    }
   }
 
   if (side === "SELL") {
     const holding = await Holding.findOne({ userId: user._id, ticker });
-    if (!holding || holding.quantity < quantity) {
+    if (!holding || availableSharesOf(holding) < quantity) {
       const rejected = await Order.create({
         userId: user._id,
         ticker,
@@ -423,11 +586,35 @@ export const placeOrder = async (userInput, payload) => {
         requestedAsk: quote.ask,
         remainingQuantity: quantity,
         estimatedSlippage: calculateSlippage({ quote, side, quantity }),
-        rejectionReason: "Not enough shares available to sell",
+        rejectionReason: "Not enough available shares to sell",
         idempotencyKey: payload.idempotencyKey,
         expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
       });
       return { order: rejected };
+    }
+    if (type === "LIMIT") {
+      const reservedHolding = await reserveShares(user._id, ticker, quantity);
+      if (!reservedHolding) {
+        const rejected = await Order.create({
+          userId: user._id,
+          ticker,
+          side,
+          type,
+          quantity,
+          limitPrice,
+          status: "REJECTED",
+          requestedPrice: quote.mid,
+          requestedBid: quote.bid,
+          requestedAsk: quote.ask,
+          remainingQuantity: quantity,
+          estimatedSlippage: calculateSlippage({ quote, side, quantity }),
+          rejectionReason: "Not enough available shares to reserve for this pending limit order",
+          idempotencyKey: payload.idempotencyKey,
+          expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
+        });
+        return { order: rejected };
+      }
+      reservedShareQuantity = quantity;
     }
   }
 
@@ -453,6 +640,10 @@ export const placeOrder = async (userInput, payload) => {
     filledQuantity: 0,
     remainingQuantity: quantity,
     estimatedSlippage: calculateSlippage({ quote, side, quantity }),
+    reservedCashAmount,
+    reservedShareQuantity,
+    reservationStatus: reservedCashAmount > 0 || reservedShareQuantity > 0 ? "RESERVED" : "NONE",
+    reservationCreatedAt: reservedCashAmount > 0 || reservedShareQuantity > 0 ? new Date() : null,
     idempotencyKey: payload.idempotencyKey,
     tradePlanId: tradePlan?._id || null,
     expiresAt: new Date(Date.now() + DEFAULT_ORDER_EXPIRY_MS),
@@ -499,6 +690,7 @@ export const cancelOrder = async (userId, orderId) => {
   }
   order.status = "CANCELLED";
   order.cancelledAt = new Date();
+  await releaseOrderReservation(order);
   await order.save();
   return orderPublicShape(order);
 };

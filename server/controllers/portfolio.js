@@ -15,6 +15,8 @@ export const getPortfolio = async (req, res, next) => {
       return {
         ticker: h.ticker,
         quantity: h.quantity,
+        reservedQuantity: Number(h.reservedQuantity || 0),
+        availableQuantity: Math.max(0, Number(h.quantity || 0) - Number(h.reservedQuantity || 0)),
         avgCost: h.avgCost,
         totalInvested: h.totalInvested,
         currentPrice,
@@ -35,6 +37,8 @@ export const getPortfolioSummary = async (req, res, next) => {
     const holdings = await Holding.find({ userId: req.user._id });
     const prices = getPriceMap();
     const cash = req.user.cashBalance;
+    const reservedCash = Number(req.user.reservedCash || 0);
+    const availableCash = Math.max(0, Number(cash || 0) - reservedCash);
 
     let stockValue = 0;
     let totalInvested = 0;
@@ -51,6 +55,8 @@ export const getPortfolioSummary = async (req, res, next) => {
 
     res.json({
       cash: +cash.toFixed(2),
+      reservedCash: +reservedCash.toFixed(2),
+      availableCash: +availableCash.toFixed(2),
       stockValue: +stockValue.toFixed(2),
       totalValue,
       totalInvested: +totalInvested.toFixed(2),

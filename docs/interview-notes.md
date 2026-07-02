@@ -68,9 +68,16 @@ The server still owns execution:
 - market sell fills near bid minus slippage
 - limit buy waits until ask reaches the limit
 - limit sell waits until bid reaches the limit
+- pending buy limits reserve virtual cash
+- pending sell limits reserve available shares
+- cancelled, expired, or rejected pending orders release their reservation
 - closed-market market orders reject clearly
 - idempotency keys still prevent duplicate orders
 - spread and slippage respond to liquidity, volatility, events, and session
+
+Interview explanation:
+
+> Pending orders introduced a double-spend problem. I solved it by reserving cash for pending buy limits and reserving shares for pending sell limits, then consuming or releasing those reservations when the order fills, cancels, expires, or rejects.
 
 ## Fallbacks
 
@@ -87,4 +94,3 @@ StockBreakers intentionally avoids real broker APIs and paid market APIs. It is 
 - Candles are in-memory.
 - Benchmarks are simple averages.
 - The app is not suitable for real investment decisions.
-

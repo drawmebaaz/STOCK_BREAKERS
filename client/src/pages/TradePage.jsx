@@ -68,6 +68,8 @@ function StatusCard({ order, onCancel, cancelling }) {
         <SummaryRow label="Filled" value={`${order.filledQuantity || 0}/${order.quantity}`} />
         <SummaryRow label="Avg fill" value={order.avgFillPrice ? currency(order.avgFillPrice) : "--"} />
         <SummaryRow label="Slippage" value={currency(order.actualSlippage || 0)} />
+        {Number(order.reservedCashAmount || 0) > 0 && <SummaryRow label="Cash reserved" value={currency(order.reservedCashAmount)} />}
+        {Number(order.reservedShareQuantity || 0) > 0 && <SummaryRow label="Shares reserved" value={`${order.reservedShareQuantity}`} />}
       </div>
       {order.rejectionReason && <div className="alert-error mt-4">{order.rejectionReason}</div>}
       {canCancel && (
@@ -113,7 +115,7 @@ export default function TradePage() {
   const stock = stocks.find((item) => item.ticker === ticker);
   const holding = holdings.find((item) => item.ticker === ticker);
   const qty = Math.max(1, Number(quantity || 1));
-  const cash = Number(user?.cashBalance || summary?.cash || 0);
+  const cash = Number(summary?.availableCash ?? user?.availableCash ?? user?.cashBalance ?? summary?.cash ?? 0);
   const totalEquity = Number(summary?.totalValue || cash);
   const bid = Number(stock?.bid || stock?.price || 0);
   const ask = Number(stock?.ask || stock?.price || 0);
@@ -127,8 +129,13 @@ export default function TradePage() {
   const fillEstimate = side === "BUY" ? effectiveEntry + slippageEstimate : Math.max(0.01, effectiveEntry - slippageEstimate);
   const tradeValue = fillEstimate * qty;
   const sharesHeld = Number(holding?.quantity || 0);
+  const availableShares = Number(holding?.availableQuantity ?? Math.max(0, sharesHeld - Number(holding?.reservedQuantity || 0)));
   const positionAfter = side === "BUY" ? sharesHeld + qty : Math.max(0, sharesHeld - qty);
   const cashAfter = side === "BUY" ? cash - tradeValue : cash + tradeValue;
+  const pendingReservation = orderType === "LIMIT" && side === "BUY" && Number(limitPrice) > 0
+    ? Number(limitPrice) * qty + Math.abs(slippageEstimate) * qty
+    : 0;
+  const cashAfterReservation = side === "BUY" && orderType === "LIMIT" ? cash - pendingReservation : cashAfter;
   const stopLoss = Number(plan.stopLoss || 0);
   const targetPrice = Number(plan.targetPrice || 0);
   const riskPerShare = side === "BUY" && stopLoss > 0 ? Math.max(0, fillEstimate - stopLoss) : 0;
@@ -144,8 +151,9 @@ export default function TradePage() {
   const session = marketStatus?.session || marketStatus?.status || stock?.marketSession || "OPEN";
 
   const warnings = [
-    side === "BUY" && cashAfter < 0 ? "This order needs more virtual cash than available." : null,
-    side === "SELL" && qty > sharesHeld ? "You do not hold enough shares to sell this quantity." : null,
+    side === "BUY" && orderType === "LIMIT" && cashAfterReservation < 0 ? "This pending order needs more available virtual cash than you have." : null,
+    side === "BUY" && orderType !== "LIMIT" && cashAfter < 0 ? "This order needs more available virtual cash than you have." : null,
+    side === "SELL" && qty > availableShares ? "You do not have enough available shares to sell this quantity." : null,
     orderType === "LIMIT" && !Number(limitPrice) ? "Enter a limit price for this order." : null,
     orderType === "MARKET" && session === "CLOSED" ? "The simulated market is closed. Market orders will not fill right now." : null,
     session !== "OPEN" && session !== "CLOSED" ? "This session has lower liquidity, so spread and slippage may be wider." : null,
@@ -204,7 +212,7 @@ export default function TradePage() {
 
   const place = async () => {
     if (!stock) return;
-    if (warnings.some((warning) => warning.includes("more virtual cash") || warning.includes("not hold enough") || warning.includes("limit price"))) {
+    if (warnings.some((warning) => warning.includes("more available virtual cash") || warning.includes("not have enough available shares") || warning.includes("limit price"))) {
       setError(warnings[0]);
       return;
     }
@@ -298,7 +306,7 @@ export default function TradePage() {
                 <SummaryRow label="Bid" value={currency(bid)} />
                 <SummaryRow label="Ask" value={currency(ask)} />
                 <SummaryRow label="Spread" value={currency(stock.spread || ask - bid)} />
-                <SummaryRow label="Held" value={`${sharesHeld} shares`} />
+                <SummaryRow label="Available" value={`${availableShares} shares`} />
                 <SummaryRow label="Session" value={session.replace("_", " ")} tone={session === "OPEN" ? "positive" : "warning"} />
                 <SummaryRow label="Volume" value={Number(stock.volume || 0).toLocaleString("en-IN")} />
                 <SummaryRow label="Day low" value={currency(stock.dayLow)} />
@@ -445,7 +453,14 @@ export default function TradePage() {
               <div className="mt-4 space-y-3">
                 <SummaryRow label="Expected entry" value={currency(fillEstimate)} />
                 <SummaryRow label="Estimated value" value={currency(tradeValue)} />
-                <SummaryRow label="Cash after" value={currency(cashAfter)} tone={cashAfter < 0 ? "negative" : "neutral"} />
+                <SummaryRow label="Available cash" value={currency(cash)} />
+                {orderType === "LIMIT" && side === "BUY" && (
+                  <SummaryRow label="Cash reserved if pending" value={currency(pendingReservation)} tone={cashAfterReservation < 0 ? "negative" : "neutral"} />
+                )}
+                {orderType === "LIMIT" && side === "SELL" && (
+                  <SummaryRow label="Shares reserved if pending" value={`${qty}`} tone={qty > availableShares ? "negative" : "neutral"} />
+                )}
+                <SummaryRow label={orderType === "LIMIT" && side === "BUY" ? "Cash after reservation" : "Cash after"} value={currency(cashAfterReservation)} tone={cashAfterReservation < 0 ? "negative" : "neutral"} />
                 <SummaryRow label="Shares after" value={`${positionAfter}`} />
                 <SummaryRow label="Position size" value={`${tickerExposure.toFixed(1)}%`} tone={tickerExposure > 25 ? "warning" : "neutral"} />
                 <div className="border-t border-slate-800 pt-3" />

@@ -6,6 +6,7 @@ import {
   calculateSlippage,
   estimateFillQuantity,
 } from "../services/tradingMath.js";
+import { estimateReservationAmount } from "../services/orderEngine.js";
 import { orderPlacementSchema } from "../middleware/validation.js";
 
 const quote = {
@@ -40,6 +41,28 @@ test("slippage increases in thinner and more volatile conditions", () => {
     quantity: 500,
   });
   assert.ok(stressed > calm);
+});
+
+test("buy limit reservation includes limit value and slippage buffer", () => {
+  const reservation = estimateReservationAmount({
+    quote,
+    side: "BUY",
+    type: "LIMIT",
+    quantity: 10,
+    limitPrice: 99,
+  });
+  assert.ok(reservation > 990);
+});
+
+test("market orders do not create long-lived reservations", () => {
+  const reservation = estimateReservationAmount({
+    quote,
+    side: "BUY",
+    type: "MARKET",
+    quantity: 10,
+    limitPrice: null,
+  });
+  assert.equal(reservation, 0);
 });
 
 test("risk plan calculates max size and reward/risk", () => {

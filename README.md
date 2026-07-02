@@ -44,6 +44,7 @@ Full app deployment:
 - Stores OHLCV candles for each ticker so charts and scenario inputs have open, high, low, close, and volume context.
 - Calculates simulated benchmark indexes such as `SBX_TOTAL` and sector benchmarks for portfolio comparison.
 - Supports market and limit orders with filled, pending, partially filled, cancelled, rejected, and expired states.
+- Reserves virtual cash for pending buy limit orders and reserves shares for pending sell limit orders so users cannot reuse committed funds or shares.
 - Records executed fills separately from orders so pending and cancelled orders are not mixed with completed trades.
 - Helps users plan trades with thesis, stop-loss, target, confidence, and position-size checks.
 - Shows portfolio analytics such as closed gain/loss, open gain/loss, win rate, drawdown, concentration, and open planned risk.
@@ -59,6 +60,7 @@ Trading workspace:
 - Market watch with searchable stocks and watchlist controls
 - Market and limit order ticket
 - Bid/ask, spread, estimated slippage, cash-after-order, and position-after-order visibility
+- Pending limit-order reservation preview for cash or shares
 - Active simulated event warning for selected stocks
 - Stop-loss, target, thesis, confidence, setup type, and invalidation notes
 - Position-size warning based on per-user risk settings
@@ -72,7 +74,7 @@ Portfolio and history:
 - Closed gain/loss, win rate, drawdown, open planned risk, and exposure warnings
 - Trade history with fill price, slippage, closed gain/loss, position-after-trade, and order IDs
 - Separate Orders page for pending, filled, cancelled, rejected, and partially filled orders
-- Portfolio-vs-benchmark comparison against the simulated total market
+- Simulated total-market context without pretending it is direct portfolio alpha
 
 Scenario and review:
 

@@ -283,7 +283,8 @@ const enrichHoldings = (holdings) => {
     const currentValue = round(currentPrice * holding.quantity);
     const pnl = round(currentValue - holding.totalInvested);
     const pnlPct = holding.totalInvested > 0 ? round((pnl / holding.totalInvested) * 100) : 0;
-    return { ...holding, currentPrice, currentValue, pnl, pnlPct };
+    const reservedQuantity = Number(holding.reservedQuantity || 0);
+    return { ...holding, reservedQuantity, availableQuantity: Math.max(0, Number(holding.quantity || 0) - reservedQuantity), currentPrice, currentValue, pnl, pnlPct };
   });
 };
 
@@ -296,6 +297,8 @@ const portfolioSummary = (state) => {
 
   return {
     cash: round(state.user.cashBalance),
+    reservedCash: round(state.user.reservedCash || 0),
+    availableCash: round(Math.max(0, Number(state.user.cashBalance || 0) - Number(state.user.reservedCash || 0))),
     stockValue: round(stockValue),
     totalValue: round(state.user.cashBalance + stockValue),
     totalInvested: round(totalInvested),
@@ -402,6 +405,20 @@ const handleOrder = (body = {}) => {
   if (type === "LIMIT" && !limitPrice) return fail(400, "Limit price is required");
 
   const fillCheck = orderStatusFromLimit({ side, type, limitPrice, stock });
+  const availableCash = Math.max(0, Number(state.user.cashBalance || 0) - Number(state.user.reservedCash || 0));
+  const availableShares = (holding) => Math.max(0, Number(holding?.quantity || 0) - Number(holding?.reservedQuantity || 0));
+  const estimatedSlippage = round(stock.price * (1 - stock.liquidityScore) * 0.001, 4);
+  const pendingCashReservation = type === "LIMIT" && side === "BUY" && fillCheck !== "FILL"
+    ? round(limitPrice * quantity + Math.abs(estimatedSlippage) * quantity)
+    : 0;
+  const pendingShareReservation = type === "LIMIT" && side === "SELL" && fillCheck !== "FILL" ? quantity : 0;
+
+  if (pendingCashReservation > availableCash) return fail(400, "Insufficient available virtual cash for this pending limit order");
+  if (pendingShareReservation > 0) {
+    const holding = state.holdings.find((item) => item.ticker === ticker);
+    if (!holding || availableShares(holding) < quantity) return fail(400, "Not enough available shares to reserve for this pending limit order");
+  }
+
   const order = {
     _id: `demo-order-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     ticker,
@@ -416,9 +433,14 @@ const handleOrder = (body = {}) => {
     avgFillPrice: 0,
     filledQuantity: 0,
     remainingQuantity: quantity,
-    estimatedSlippage: round(stock.price * (1 - stock.liquidityScore) * 0.001, 4),
+    estimatedSlippage,
     actualSlippage: 0,
     spreadPaid: 0,
+    reservedCashAmount: pendingCashReservation,
+    reservedShareQuantity: pendingShareReservation,
+    reservationStatus: pendingCashReservation > 0 || pendingShareReservation > 0 ? "RESERVED" : "NONE",
+    reservationCreatedAt: pendingCashReservation > 0 || pendingShareReservation > 0 ? new Date().toISOString() : null,
+    reservationReleasedAt: null,
     rejectionReason: null,
     idempotencyKey,
     tradePlanId: body.tradePlan ? `demo-plan-${Date.now()}` : null,
@@ -428,6 +450,11 @@ const handleOrder = (body = {}) => {
   };
 
   if (fillCheck !== "FILL") {
+    if (pendingCashReservation > 0) state.user.reservedCash = round(Number(state.user.reservedCash || 0) + pendingCashReservation);
+    if (pendingShareReservation > 0) {
+      const holding = state.holdings.find((item) => item.ticker === ticker);
+      holding.reservedQuantity = Number(holding.reservedQuantity || 0) + pendingShareReservation;
+    }
     state.orders.unshift(order);
     saveState(state);
     return respond({ success: true, order, snapshot: portfolioSummary(state) });
@@ -439,7 +466,7 @@ const handleOrder = (body = {}) => {
   const holding = state.holdings.find((item) => item.ticker === ticker);
 
   if (side === "BUY") {
-    if (state.user.cashBalance < total) {
+    if (Math.max(0, Number(state.user.cashBalance || 0) - Number(state.user.reservedCash || 0)) < total) {
       order.status = "REJECTED";
       order.rejectionReason = "Insufficient virtual cash for this order";
       state.orders.unshift(order);
@@ -456,7 +483,7 @@ const handleOrder = (body = {}) => {
       state.holdings.push({ ticker, quantity, avgCost: fillPrice, totalInvested: total });
     }
   } else {
-    if (!holding || holding.quantity < quantity) {
+    if (!holding || availableShares(holding) < quantity) {
       order.status = "REJECTED";
       order.rejectionReason = "Not enough shares available to sell";
       state.orders.unshift(order);
@@ -503,6 +530,19 @@ const cancelDemoOrder = (orderId) => {
   order.status = "CANCELLED";
   order.cancelledAt = new Date().toISOString();
   order.canCancel = false;
+  if (Number(order.reservedCashAmount || 0) > 0) {
+    state.user.reservedCash = round(Math.max(0, Number(state.user.reservedCash || 0) - Number(order.reservedCashAmount || 0)));
+    order.reservedCashAmount = 0;
+  }
+  if (Number(order.reservedShareQuantity || 0) > 0) {
+    const holding = state.holdings.find((item) => item.ticker === order.ticker);
+    if (holding) holding.reservedQuantity = Math.max(0, Number(holding.reservedQuantity || 0) - Number(order.reservedShareQuantity || 0));
+    order.reservedShareQuantity = 0;
+  }
+  if (order.reservationStatus === "RESERVED") {
+    order.reservationStatus = "RELEASED";
+    order.reservationReleasedAt = new Date().toISOString();
+  }
   saveState(state);
   return respond({ success: true, order });
 };

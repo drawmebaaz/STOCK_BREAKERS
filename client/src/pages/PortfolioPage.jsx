@@ -128,6 +128,7 @@ export default function PortfolioPage() {
   const positivePositions = enriched.filter((holding) => holding.pnl >= 0).length;
   const totalIndex = indexes.find((index) => index.symbol === "SBX_TOTAL");
   const benchmarkReturn = Number(totalIndex?.dayChangePercent || 0);
+  const reservedCash = Number(summary?.reservedCash || 0);
   const realizedTradeCount = Number(analytics?.realizedTradeCount || 0);
   const rMultipleCount = Number(analytics?.rMultipleCount || 0);
   const hasOpenRisk = Number(analytics?.openRiskAmount || 0) > 0;
@@ -170,9 +171,9 @@ export default function PortfolioPage() {
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryItem label="Total equity" value={currency(summary.totalValue)} />
             <SummaryItem
-              label="Virtual cash"
-              value={currency(summary.cash)}
-              sub={`${cashReservePct.toFixed(1)}% of account`}
+              label={reservedCash > 0 ? "Available cash" : "Virtual cash"}
+              value={currency(summary.availableCash ?? summary.cash)}
+              sub={reservedCash > 0 ? `${currency(reservedCash)} reserved by pending orders` : `${cashReservePct.toFixed(1)}% of account`}
               tone={cashReservePct >= 20 ? "neutral" : "warning"}
             />
             <SummaryItem label="Invested" value={currency(invested)} />

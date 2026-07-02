@@ -25,6 +25,8 @@ function orderNote(order, quote) {
   if (order.status === "CANCELLED") return "Cancelled before it could finish filling.";
   if (order.status === "FILLED") return "Filled in the simulator.";
   if (!["PENDING", "PARTIALLY_FILLED"].includes(order.status)) return "";
+  if (Number(order.reservedCashAmount || 0) > 0) return `${currency(order.reservedCashAmount)} is reserved until this order fills, cancels, or expires.`;
+  if (Number(order.reservedShareQuantity || 0) > 0) return `${order.reservedShareQuantity} shares are reserved until this order fills, cancels, or expires.`;
   if (order.type === "LIMIT" && quote) {
     if (order.side === "BUY" && Number(quote.ask) > Number(order.limitPrice)) {
       return `Waiting for ask ${currency(quote.ask)} to reach your limit.`;

@@ -4,8 +4,18 @@ import { usePortfolioStore, usePriceStore } from "../stores/index.js";
 import { usePortfolio } from "../hooks/index.js";
 import { api } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
+import { chartColors, chartTooltipProps } from "../utils/chartTheme.js";
 
-const COLORS = ["#bc9042", "#7ea4ce", "#3fb77c", "#c9973f", "#dc6b69", "#8b97a6", "#c7794d", "#68c8c3"];
+const COLORS = [
+  chartColors.accent,
+  chartColors.blue,
+  chartColors.green,
+  chartColors.amber,
+  chartColors.red,
+  chartColors.muted,
+  chartColors.risk,
+  chartColors.teal,
+];
 
 function Metric({ label, value, sub, tone = "neutral" }) {
   const toneClass = {
@@ -266,17 +276,12 @@ export default function PortfolioPage() {
                         paddingAngle={2}
                       >
                         {pieData.map((_, index) => (
-                          <Cell key={index} fill={COLORS[index % COLORS.length]} stroke="#101620" strokeWidth={2} />
+                          <Cell key={index} fill={COLORS[index % COLORS.length]} stroke="#0c131a" strokeWidth={2} />
                         ))}
                       </Pie>
                       <Tooltip
+                        {...chartTooltipProps}
                         formatter={(value) => currency(value)}
-                        contentStyle={{
-                          background: "#101620",
-                          border: "1px solid #243041",
-                          borderRadius: 8,
-                          color: "#edf2f7",
-                        }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -303,10 +308,6 @@ export default function PortfolioPage() {
                   {largestWeight.toFixed(1)}%
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
-                <span className="text-xs text-slate-500">Cash reserve</span>
-                <span className="mono text-sm text-[#d3aa5e]">{currency(summary?.cash)}</span>
-              </div>
             </div>
           </div>
 
@@ -321,7 +322,7 @@ export default function PortfolioPage() {
                       <span className={item.warning ? "mono text-amber-300" : "mono text-slate-200"}>{item.weight.toFixed(1)}%</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-slate-900">
-                      <div className="h-full rounded-full bg-[#7ea4ce]" style={{ width: `${Math.min(item.weight, 100)}%` }} />
+                      <div className="h-full rounded-full bg-[#8eb3dc]" style={{ width: `${Math.min(item.weight, 100)}%` }} />
                     </div>
                   </div>
                 ))}

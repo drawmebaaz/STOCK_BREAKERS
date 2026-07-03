@@ -13,6 +13,7 @@ import {
 import { usePriceStore } from "../stores/index.js";
 import { api } from "../utils/api.js";
 import { currency, signedPercent } from "../utils/format.js";
+import { chartColors, chartTooltipProps } from "../utils/chartTheme.js";
 
 function StatCard({ label, value, sub, tone = "neutral" }) {
   const toneClass = {
@@ -32,7 +33,7 @@ function StatCard({ label, value, sub, tone = "neutral" }) {
   );
 }
 
-function RiskMeter({ label, color }) {
+function RiskMeter({ label, color, explanation }) {
   const toneClass = {
     green: "text-emerald-300",
     amber: "text-amber-300",
@@ -45,12 +46,14 @@ function RiskMeter({ label, color }) {
         <h2 className="section-title">Risk Level</h2>
         <span className="badge-neutral">Practice view</span>
       </div>
-      <div className="mt-5 rounded-md border border-slate-800 bg-[#0b121a] p-4">
+      <div className="mt-5 rounded-md border border-slate-800 bg-[#0b1217] p-4">
         <p className={`text-3xl font-semibold ${toneClass}`}>{label}</p>
-        <p className="mt-2 text-sm leading-6 text-slate-500">Based on recent price swings and drops.</p>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          {explanation || "Based on recent movement, ticker type, liquidity, and current simulated market context."}
+        </p>
       </div>
       <p className="mt-4 text-sm text-slate-500">
-        Higher means the stock has moved around more sharply in the recent sample.
+        Higher means the setup may need smaller sizing, a clearer stop, or more patience before entering.
       </p>
     </div>
   );
@@ -426,44 +429,39 @@ export default function InsightsPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#7ba8d8]" />Past price</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#c6a15b]" />Middle case</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#e06f70]" />Range</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#8eb3dc]" />Past price</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#e0b865]" />Middle case</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-0.5 w-4 bg-[#ec777a]" />Range</span>
               </div>
             </div>
 
             <div className="mt-4 h-[340px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 8, right: 14, left: 0, bottom: 8 }}>
-                  <CartesianGrid stroke="#1b2533" strokeDasharray="3 3" />
+                  <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" />
                   <XAxis
                     dataKey="day"
-                    tick={{ fontSize: 11, fill: "#657386" }}
+                    tick={{ fontSize: 11, fill: chartColors.axis }}
                     tickFormatter={(value) => (value === 0 ? "Now" : value > 0 ? `+${value}d` : `${value}d`)}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: "#657386" }}
+                    tick={{ fontSize: 11, fill: chartColors.axis }}
                     tickFormatter={(value) => `$${Number(value).toFixed(0)}`}
                     width={58}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: "#101620",
-                      border: "1px solid #243041",
-                      borderRadius: 8,
-                      color: "#edf2f7",
-                      fontSize: 12,
-                    }}
+                    {...chartTooltipProps}
+                    cursor={{ stroke: chartColors.accentStrong, strokeWidth: 1, strokeDasharray: "4 4" }}
                     formatter={(value, name) => [currency(value), name]}
                     labelFormatter={(label) => (label === 0 ? "Now" : label > 0 ? `Day +${label}` : `Day ${label}`)}
                   />
-                  <ReferenceLine x={0} stroke="#243041" strokeDasharray="4 4" />
-                  <Line dataKey="historical" stroke="#7ba8d8" strokeWidth={2} dot={false} name="Past price" connectNulls />
-                  <Line dataKey="p95" stroke="#68c8c3" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="High range" connectNulls />
-                  <Line dataKey="p75" stroke="#7ba8d8" strokeWidth={1} dot={false} strokeDasharray="3 3" name="Upper range" connectNulls />
-                  <Line dataKey="p50" stroke="#bc9042" strokeWidth={2.2} dot={false} name="Middle case" connectNulls />
-                  <Line dataKey="p25" stroke="#c9973f" strokeWidth={1} dot={false} strokeDasharray="3 3" name="Lower range" connectNulls />
-                  <Line dataKey="p5" stroke="#dc6b69" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="Low range" connectNulls />
+                  <ReferenceLine x={0} stroke={chartColors.border} strokeDasharray="4 4" />
+                  <Line dataKey="historical" stroke={chartColors.blue} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} name="Past price" connectNulls />
+                  <Line dataKey="p95" stroke={chartColors.teal} strokeWidth={1.6} dot={false} strokeDasharray="5 3" activeDot={false} name="High range" connectNulls />
+                  <Line dataKey="p75" stroke="#9fbedf" strokeWidth={1.1} dot={false} strokeDasharray="3 3" activeDot={false} name="Upper range" connectNulls />
+                  <Line dataKey="p50" stroke={chartColors.accentStrong} strokeWidth={2.4} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} name="Middle case" connectNulls />
+                  <Line dataKey="p25" stroke={chartColors.amber} strokeWidth={1.1} dot={false} strokeDasharray="3 3" activeDot={false} name="Lower range" connectNulls />
+                  <Line dataKey="p5" stroke={chartColors.red} strokeWidth={1.6} dot={false} strokeDasharray="5 3" activeDot={false} name="Low range" connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -471,7 +469,7 @@ export default function InsightsPage() {
 
           <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
             <SentimentPanel {...result.sentiment} />
-            <RiskMeter label={result.risk.label} color={result.risk.color} />
+            <RiskMeter label={result.risk.label} color={result.risk.color} explanation={result.risk.explanation} />
           </div>
 
           {result.risk.metrics && <ResearchTakeaway risk={result.risk} />}

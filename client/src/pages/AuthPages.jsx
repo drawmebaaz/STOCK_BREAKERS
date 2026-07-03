@@ -62,10 +62,6 @@ function AuthCard({ title, subtitle, children }) {
           </div>
 
           <div className="auth-form-panel panel">{children}</div>
-
-          <p className="auth-footnote">
-            This is a college project simulator. It uses virtual funds and simulated market data for learning and demos.
-          </p>
         </section>
       </div>
     </div>

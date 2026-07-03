@@ -20,3 +20,10 @@ export const signedPercent = (value, digits = 2) => {
   const amount = Number(value ?? 0);
   return `${amount >= 0 ? "+" : ""}${amount.toFixed(digits)}%`;
 };
+
+export const titleFromCode = (value) =>
+  String(value || "")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");

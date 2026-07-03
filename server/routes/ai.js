@@ -10,6 +10,7 @@ import {
   validateBody,
 } from "../middleware/validation.js";
 import { getCandles, getIndex, getLivePrices, getMarketEvents, getMarketStatus, getPriceHistory, getQuote } from "../utils/priceStore.js";
+import { calibrateScenarioRisk } from "../services/scenarioRisk.js";
 
 const router = Router();
 const ml = axios.create({
@@ -191,14 +192,24 @@ router.post("/sentiment", protect, validateBody(sentimentSchema), async (req, re
 });
 
 router.post("/risk", protect, validateBody(riskSchema), async (req, res) => {
+  const quote = getQuote(req.body.ticker);
+  const marketStatus = getMarketStatus();
+  const activeEvents = getMarketEvents({ ticker: req.body.ticker }).slice(0, 3);
   try {
     const { data } = await ml.post("/risk", req.body);
-    res.json(data);
+    res.json(calibrateScenarioRisk({
+      ticker: req.body.ticker,
+      prices: req.body.prices,
+      quote,
+      marketStatus,
+      activeEvents,
+      mlRisk: data,
+    }));
   } catch {
     const changes = req.body.prices.slice(1).map((price, index) => (price / req.body.prices[index] - 1) * 100);
     const downside = changes.length ? changes.filter((value) => value < 0).length / changes.length * 100 : 50;
     const swing = changes.length ? percentile(changes.map(Math.abs), 0.8) : 1;
-    res.json({
+    const fallbackRisk = {
       status: "degraded",
       score: Math.min(95, Math.max(5, Math.round(swing * 15 + downside * 0.2))),
       label: swing > 2.5 ? "High" : swing > 1.2 ? "Moderate" : "Low",
@@ -206,7 +217,15 @@ router.post("/risk", protect, validateBody(riskSchema), async (req, res) => {
       metrics: {
         downside_probability: +downside.toFixed(1),
       },
-    });
+    };
+    res.json(calibrateScenarioRisk({
+      ticker: req.body.ticker,
+      prices: req.body.prices,
+      quote,
+      marketStatus,
+      activeEvents,
+      mlRisk: fallbackRisk,
+    }));
   }
 });
 

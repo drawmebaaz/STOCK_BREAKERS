@@ -1,8 +1,6 @@
 import React, { useEffect } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { X } from "lucide-react";
-import { useAuthStore, usePriceStore } from "../../stores/index.js";
-import { signedPercent } from "../../utils/format.js";
 
 const NAV = [
   { to: "/", label: "Overview", description: "Market watch" },
@@ -17,16 +15,11 @@ const NAV = [
 const desktopLinkClass = ({ isActive }) =>
   `flex items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
     isActive
-      ? "border-[#8f713e]/70 bg-[#bc9042]/10 text-slate-50"
+      ? "border-[#8f7242]/70 bg-[#d0a24c]/10 text-slate-50"
       : "border-transparent text-slate-400 hover:border-slate-700 hover:bg-[#111923] hover:text-slate-100"
   }`;
 
 export default function Sidebar({ open = false, onClose = () => {} }) {
-  const navigate = useNavigate();
-  const user = useAuthStore((s) => s.user);
-  const stocks = usePriceStore((s) => s.stocks);
-  const watched = stocks.filter((stock) => (user?.watchlist || []).includes(stock.ticker)).slice(0, 4);
-
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event) => {
@@ -36,14 +29,9 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, open]);
 
-  const goTo = (path) => {
-    navigate(path);
-    onClose();
-  };
-
   return (
     <>
-      <aside className="hidden w-[220px] shrink-0 border-r border-slate-800 bg-[#0a1017] xl:flex xl:flex-col">
+      <aside className="hidden w-[220px] shrink-0 border-r border-slate-800 bg-[#080d11] xl:flex xl:flex-col">
         <div className="border-b border-slate-800 px-4 py-4">
           <div className="min-w-0">
             <p className="truncate text-base font-semibold text-slate-100">StockBreakers</p>
@@ -61,41 +49,6 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
             </NavLink>
           ))}
         </nav>
-
-        <div className="mx-3 mt-2 border-t border-slate-800 pt-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-xs font-semibold text-slate-400">Watchlist</div>
-            <span className="badge-neutral">{watched.length}</span>
-          </div>
-
-          <div className="space-y-2">
-            {watched.length === 0 ? (
-              <button
-                onClick={() => navigate("/")}
-                className="w-full rounded-md border border-dashed border-slate-700 px-3 py-3 text-left text-xs leading-5 text-slate-500 transition-colors hover:border-slate-600 hover:text-slate-300"
-              >
-                Add stocks from Market Watch to keep them here.
-              </button>
-            ) : (
-              watched.map((stock) => (
-                <button
-                  key={stock.ticker}
-                  onClick={() => navigate(`/trade/${stock.ticker}`)}
-                  className="flex w-full items-center justify-between rounded-md border border-slate-800 bg-[#0d141d] px-3 py-2 text-left transition-colors hover:border-slate-700 hover:bg-[#121b26]"
-                  title={`${stock.ticker} ${signedPercent(stock.change)}`}
-                >
-                  <span>
-                    <span className="block font-mono text-xs font-semibold text-slate-200">{stock.ticker}</span>
-                    <span className="mt-0.5 block text-[11px] text-slate-500">{stock.sector}</span>
-                  </span>
-                  <span className={stock.change >= 0 ? "text-xs font-semibold text-emerald-300" : "text-xs font-semibold text-red-300"}>
-                    {signedPercent(stock.change, 1)}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
 
         <div className="mt-auto border-t border-slate-800 px-4 py-4">
           <p className="text-xs font-medium text-slate-300">Educational mode</p>
@@ -121,7 +74,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
               <button
                 type="button"
                 onClick={onClose}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-800 bg-[#101821] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-800 bg-[#101820] text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
                 aria-label="Close navigation"
                 title="Close navigation"
               >
@@ -139,41 +92,6 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                 </NavLink>
               ))}
             </nav>
-
-            <div className="mx-3 border-t border-slate-800 pt-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-xs font-semibold text-slate-400">Watchlist</div>
-                <span className="badge-neutral">{watched.length}</span>
-              </div>
-
-              <div className="space-y-2">
-                {watched.length === 0 ? (
-                  <button
-                    onClick={() => goTo("/")}
-                    className="w-full rounded-md border border-dashed border-slate-700 px-3 py-3 text-left text-xs leading-5 text-slate-500 transition-colors hover:border-slate-600 hover:text-slate-300"
-                  >
-                    Add stocks from Market Watch to keep them here.
-                  </button>
-                ) : (
-                  watched.map((stock) => (
-                    <button
-                      key={stock.ticker}
-                      onClick={() => goTo(`/trade/${stock.ticker}`)}
-                      className="flex w-full items-center justify-between rounded-md border border-slate-800 bg-[#0d141d] px-3 py-2 text-left transition-colors hover:border-slate-700 hover:bg-[#121b26]"
-                      title={`${stock.ticker} ${signedPercent(stock.change)}`}
-                    >
-                      <span>
-                        <span className="block font-mono text-xs font-semibold text-slate-200">{stock.ticker}</span>
-                        <span className="mt-0.5 block text-[11px] text-slate-500">{stock.sector}</span>
-                      </span>
-                      <span className={stock.change >= 0 ? "text-xs font-semibold text-emerald-300" : "text-xs font-semibold text-red-300"}>
-                        {signedPercent(stock.change, 1)}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
 
             <div className="mt-auto border-t border-slate-800 px-4 py-4">
               <p className="text-xs font-medium text-slate-300">Educational mode</p>

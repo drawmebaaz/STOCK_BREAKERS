@@ -33,7 +33,7 @@ function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
             onClick={() => onToggleWatch(stock.ticker)}
             className={`inline-flex h-8 min-w-[64px] items-center justify-center rounded-md border px-2 text-xs font-semibold transition-colors ${
               inWatch
-                ? "border-[#8f713e]/60 bg-[#bc9042]/10 text-[#d3aa5e]"
+                ? "border-[#8f7242]/60 bg-[#d0a24c]/10 text-[#e0b865]"
                 : "border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-200"
             }`}
             title={inWatch ? "Remove from watchlist" : "Add to watchlist"}
@@ -63,7 +63,6 @@ function PriceRow({ stock, onTrade, watchlist, onToggleWatch }) {
 
 export default function DashboardPage() {
   const stocks = usePriceStore((s) => s.stocks);
-  const marketStatus = usePriceStore((s) => s.marketStatus);
   const summary = usePortfolioStore((s) => s.summary);
   const user = useAuthStore((s) => s.user);
   const updateWatchlist = useAuthStore((s) => s.updateWatchlist);
@@ -132,8 +131,6 @@ export default function DashboardPage() {
   const strongest = [...stocks].sort((a, b) => b.change - a.change)[0];
   const weakest = [...stocks].sort((a, b) => a.change - b.change)[0];
   const totalIndex = indexes.find((index) => index.symbol === "SBX_TOTAL");
-  const session = marketStatus?.session || marketStatus?.status || stocks[0]?.marketSession || "OPEN";
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -226,15 +223,6 @@ export default function DashboardPage() {
         <aside className="space-y-4">
           <div className="panel p-4">
             <h2 className="section-title">Market Snapshot</h2>
-            <div className="mt-3 rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
-              <p className="stat-label">Session</p>
-              <p className={session === "OPEN" ? "mt-1 text-sm font-semibold text-emerald-300" : "mt-1 text-sm font-semibold text-amber-300"}>
-                {session.replace("_", " ")}{marketStatus?.simulatedTime ? ` - Sim ${marketStatus.simulatedTime}` : ""}
-              </p>
-              {session !== "OPEN" && (
-                <p className="mt-1 text-xs text-slate-500">Market orders may wait or reject depending on the session.</p>
-              )}
-            </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2">
                 <p className="stat-label">Gainers</p>
